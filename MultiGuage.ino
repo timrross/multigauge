@@ -79,13 +79,13 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
   lv_disp_flush_ready(disp);
 }
 
-// static lv_obj_t *boost_guage;
-// static lv_meter_indicator_t *needle;
-static lv_obj_t *count_label;
-static lv_obj_t *boost_pressure_label;
-static lv_obj_t *oil_temp_label;
-static lv_obj_t *oil_pressure_label;
-static lv_obj_t *egt_label;
+static lv_obj_t * boost_guage;
+static lv_obj_t * needle_line;
+static lv_obj_t * count_label;
+static lv_obj_t * boost_pressure_label;
+static lv_obj_t * oil_temp_label;
+static lv_obj_t * oil_pressure_label;
+static lv_obj_t * egt_label;
 
 void init_ui() {
 
@@ -104,31 +104,6 @@ void init_ui() {
   lv_style_set_text_line_space(&style, 20);
   lv_style_set_text_font(&style, &lv_font_montserrat_24);
   lv_style_set_text_align(&style, LV_TEXT_ALIGN_CENTER);
-  // lv_obj_add_style(boost_guage, &style, LV_PART_MAIN);
-  // lv_obj_add_style(boost_guage, &style, LV_PART_TICKS);
-
-  /*Add a scale first*/
-  // lv_meter_scale_t *scale = lv_meter_add_scale(boost_guage);
-  // lv_meter_set_scale_ticks(boost_guage, scale, 41, 2, 15, lv_color_white());
-  // lv_meter_set_scale_major_ticks(boost_guage, scale, 10, 4, 30, lv_color_white(), 30);
-  // lv_meter_set_scale_range(boost_guage, scale, 0, 200, 270, 135);
-
-  // lv_meter_indicator_t *indic;
-
-  // /*Add a red arc to the end*/
-  // indic = lv_meter_add_arc(boost_guage, scale, 3, lv_palette_main(LV_PALETTE_RED), 0);
-  // lv_meter_set_indicator_start_value(boost_guage, indic, 150);
-  // lv_meter_set_indicator_end_value(boost_guage, indic, 200);
-
-  /*Make the tick lines red at the end of the scale*/
-  // indic = lv_meter_add_scale_lines(boost_guage, scale, lv_palette_main(LV_PALETTE_RED), lv_palette_main(LV_PALETTE_RED), false, 0);
-  // lv_meter_set_indicator_start_value(boost_guage, indic, 150);
-  // lv_meter_set_indicator_end_value(boost_guage, indic, 200);
-  count_label = lv_label_create(lv_scr_act());
-  lv_obj_set_width(count_label, LV_SIZE_CONTENT);
-  lv_label_set_text(count_label, "--");
-  lv_obj_align(count_label, LV_ALIGN_CENTER, 0, -40);
-  lv_obj_add_style(count_label, &style, LV_PART_MAIN);
 
   boost_pressure_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(boost_pressure_label, LV_SIZE_CONTENT);
@@ -154,8 +129,89 @@ void init_ui() {
   lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 120);
   lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
 
-  /*Add a needle line indicator*/
-  // needle = lv_meter_add_needle_line(boost_guage, scale, 4, lv_palette_main(LV_PALETTE_GREY), -10);
+  /*Add a scale first*/
+  boost_guage = lv_scale_create(lv_screen_active());
+  lv_obj_set_size(boost_guage, 470, 470);
+  lv_scale_set_mode(boost_guage, LV_SCALE_MODE_ROUND_INNER);
+  // lv_obj_set_style_bg_opa(boost_guage, LV_OPA_COVER, 100);
+  // lv_obj_set_style_radius(boost_guage, LV_RADIUS_CIRCLE, 0);
+  // lv_obj_set_style_clip_corner(boost_guage, true, 0);
+  lv_obj_align(boost_guage, LV_ALIGN_CENTER, 0, 0);
+  lv_scale_set_label_show(boost_guage, true);
+  lv_scale_set_total_tick_count(boost_guage, 21);
+  lv_scale_set_major_tick_every(boost_guage, 5);
+  lv_obj_set_style_length(boost_guage, 5, LV_PART_ITEMS);
+  lv_obj_set_style_length(boost_guage, 20, LV_PART_INDICATOR);
+  lv_scale_set_range(boost_guage, 0, 2000);
+
+  static const char * custom_labels[] = {"0", "0.5", "1.0", "1.5", "2.0", NULL};
+  lv_scale_set_text_src(boost_guage, custom_labels);
+
+  lv_scale_set_angle_range(boost_guage, 270);
+  lv_scale_set_rotation(boost_guage, 135);
+
+  needle_line = lv_line_create(boost_guage);
+
+  lv_obj_set_style_line_width(needle_line, 4, LV_PART_MAIN);
+  lv_obj_set_style_line_rounded(needle_line, true, LV_PART_MAIN);
+  lv_obj_set_style_line_color(needle_line, lv_color_white(), 0);
+
+  static lv_style_t indicator_style;
+  lv_style_init(&indicator_style);
+  lv_style_set_text_font(&indicator_style, &lv_font_montserrat_24);
+  lv_style_set_text_color(&indicator_style, lv_color_white());
+  lv_style_set_line_color(&indicator_style, lv_color_white());
+  lv_style_set_width(&indicator_style, 20U);      /*Tick length*/
+  lv_style_set_line_width(&indicator_style, 2U);  /*Tick width*/
+  
+  lv_obj_add_style(boost_guage, &indicator_style, LV_PART_INDICATOR);
+
+  static lv_style_t minor_ticks_style;
+  lv_style_init(&minor_ticks_style);
+  lv_style_set_line_color(&minor_ticks_style, lv_color_white());
+  lv_style_set_width(&minor_ticks_style, 10U);         /*Tick length*/
+  lv_style_set_line_width(&minor_ticks_style, 2U);    /*Tick width*/
+  lv_obj_add_style(boost_guage, &minor_ticks_style, LV_PART_ITEMS);
+
+  static lv_style_t main_line_style;
+  lv_style_init(&main_line_style);
+  /* Main line properties */
+  lv_style_set_arc_color(&main_line_style, lv_color_white());
+  lv_style_set_arc_width(&main_line_style, 2U); /*Tick width*/
+  lv_obj_add_style(boost_guage, &main_line_style, LV_PART_MAIN);
+
+  /* Add a section */
+  static lv_style_t section_minor_tick_style;
+  static lv_style_t section_label_style;
+  static lv_style_t section_main_line_style;
+
+  lv_style_init(&section_label_style);
+  lv_style_init(&section_minor_tick_style);
+  lv_style_init(&section_main_line_style);
+
+  /* Label style properties */
+  lv_style_set_text_color(&section_label_style, lv_palette_darken(LV_PALETTE_RED, 3));
+
+  lv_style_set_line_color(&section_label_style, lv_palette_darken(LV_PALETTE_RED, 3));
+
+  lv_style_set_line_color(&section_minor_tick_style, lv_palette_lighten(LV_PALETTE_RED, 2));
+
+  /* Main line properties */
+  lv_style_set_arc_color(&section_main_line_style, lv_palette_darken(LV_PALETTE_RED, 3));
+
+
+  /* Configure section styles */
+  lv_scale_section_t * section = lv_scale_add_section(boost_guage);
+  lv_scale_section_set_range(section, 1500, 2000);
+  lv_scale_section_set_style(section, LV_PART_INDICATOR, &section_label_style);
+  lv_scale_section_set_style(section, LV_PART_ITEMS, &section_minor_tick_style);
+  lv_scale_section_set_style(section, LV_PART_MAIN, &section_main_line_style);
+
+}
+
+static void set_needle_line_value(int32_t v)
+{
+    lv_scale_set_line_needle_value(boost_guage, needle_line, -60, v);
 }
 
 /** Sensor vars */
@@ -399,28 +455,27 @@ void setup() {
 void loop() {
 
   readAtmosPressureSensor();
-  // readIntercoolerTemperatureSensor();
-  // readOilSensor();
+  readIntercoolerTemperatureSensor();
+  readOilSensor();
   readBoostPressureSensor();
   readEGTSensor();
 
-  if (count % 20000) {
+  if (count % 500 == 0) {
     Serial.println(count);
     Serial.print("Atmos:");
     Serial.print(atmos_temp);
     Serial.println(" °C ");
     Serial.print(atmos_pressure / 100.0F);
     Serial.println(" hPa");
-
-  //   Serial.print("intercooler temp:");
-  //   Serial.print(intercooler_temp);
-  //   Serial.print("; ");
-  //   Serial.print("Oil temp:");
-  //   Serial.print(oil_temp);
-  //   Serial.print("; ");
-  //   Serial.print("Oil pressure:");
-  //   Serial.print(oil_pressure);
-  //   Serial.print("; ");
+    Serial.print("intercooler temp:");
+    Serial.print(intercooler_temp);
+    Serial.print("; ");
+    Serial.print("Oil temp:");
+    Serial.print(oil_temp);
+    Serial.print("; ");
+    Serial.print("Oil pressure:");
+    Serial.print(oil_pressure);
+    Serial.print("; ");
     Serial.print("EGT:");
     Serial.print(egt);
     Serial.print("; ");
@@ -429,7 +484,7 @@ void loop() {
     Serial.println("; ");
   }
   char buffer[6];
-  dtostrf(boost_pressure,2, 1, buffer);
+  dtostrf(boost_pressure, 2, 1, buffer);
   lv_label_set_text(boost_pressure_label, buffer);
   dtostrf(oil_temp,2, 1, buffer);
   lv_label_set_text(oil_temp_label, buffer);
@@ -437,8 +492,8 @@ void loop() {
   lv_label_set_text(oil_pressure_label, buffer);
   dtostrf(egt,2, 1, buffer);
   lv_label_set_text(egt_label,  buffer);
-  lv_label_set_text_fmt(count_label, "%d", count);
   // lv_meter_set_indicator_value(boost_guage, needle, boostPressure);
+  set_needle_line_value((int)boost_pressure);
 
   lv_task_handler(); /* let the GUI do its work */
 
