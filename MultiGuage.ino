@@ -81,6 +81,8 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
 
 // static lv_obj_t *boost_guage;
 // static lv_meter_indicator_t *needle;
+static lv_obj_t *count_label;
+static lv_obj_t *boost_pressure_label;
 static lv_obj_t *oil_temp_label;
 static lv_obj_t *oil_pressure_label;
 static lv_obj_t *egt_label;
@@ -91,15 +93,15 @@ void init_ui() {
   // lv_obj_center(boost_guage);
   // lv_obj_set_size(boost_guage, 470, 470);
 
-  // static lv_style_t style;
-  // lv_style_init(&style);
-  // lv_style_set_bg_color(&style, lv_color_black());
-  // lv_style_set_border_width(&style, 0);
-  // lv_style_set_text_color(&style, lv_color_white());
-  // lv_style_set_text_letter_space(&style, 5);
-  // lv_style_set_text_line_space(&style, 20);
-  // lv_style_set_text_font(&style, &lv_font_montserrat_24);
-  // lv_style_set_text_align(&style, LV_TEXT_ALIGN_CENTER);
+  static lv_style_t style;
+  lv_style_init(&style);
+  lv_style_set_bg_color(&style, lv_color_black());
+  lv_style_set_border_width(&style, 0);
+  lv_style_set_text_color(&style, lv_color_white());
+  lv_style_set_text_letter_space(&style, 5);
+  lv_style_set_text_line_space(&style, 20);
+  lv_style_set_text_font(&style, &lv_font_montserrat_24);
+  lv_style_set_text_align(&style, LV_TEXT_ALIGN_CENTER);
   // lv_obj_add_style(boost_guage, &style, LV_PART_MAIN);
   // lv_obj_add_style(boost_guage, &style, LV_PART_TICKS);
 
@@ -120,24 +122,34 @@ void init_ui() {
   // indic = lv_meter_add_scale_lines(boost_guage, scale, lv_palette_main(LV_PALETTE_RED), lv_palette_main(LV_PALETTE_RED), false, 0);
   // lv_meter_set_indicator_start_value(boost_guage, indic, 150);
   // lv_meter_set_indicator_end_value(boost_guage, indic, 200);
+  count_label = lv_label_create(lv_scr_act());
+  lv_obj_set_width(count_label, LV_SIZE_CONTENT);
+  lv_label_set_text(count_label, "--");
+  lv_obj_align(count_label, LV_ALIGN_CENTER, 0, -40);
+
+  boost_pressure_label = lv_label_create(lv_scr_act());
+  lv_obj_set_width(boost_pressure_label, LV_SIZE_CONTENT);
+  lv_label_set_text(boost_pressure_label, "--");
+  lv_obj_align(boost_pressure_label, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_add_style(boost_pressure_label, &style, LV_PART_MAIN);
 
   oil_temp_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
   lv_label_set_text(oil_temp_label, "--");
   lv_obj_align(oil_temp_label, LV_ALIGN_CENTER, 0, 40);
-  // lv_obj_add_style(oil_temp_label, &style, LV_PART_MAIN);
+  lv_obj_add_style(oil_temp_label, &style, LV_PART_MAIN);
 
   oil_pressure_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_pressure_label, LV_SIZE_CONTENT);
   lv_label_set_text(oil_pressure_label, "--");
   lv_obj_align(oil_pressure_label, LV_ALIGN_CENTER, 0, 80);
-  // lv_obj_add_style(oil_pressure_label, &style, LV_PART_MAIN);
+  lv_obj_add_style(oil_pressure_label, &style, LV_PART_MAIN);
 
   egt_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(egt_label, LV_SIZE_CONTENT);
   lv_label_set_text(egt_label, "--");
   lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 120);
-  // lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
+  lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
 
   /*Add a needle line indicator*/
   // needle = lv_meter_add_needle_line(boost_guage, scale, 4, lv_palette_main(LV_PALETTE_GREY), -10);
@@ -157,14 +169,14 @@ volatile double oil_pressure;
 volatile byte oil_sensor_status;
 
 /* Vars for boost pressure */
-double easingFactor = 0.1;
+float easing_factor = 0.1;
 // Sensor readings
-double boostPressure = 0.0;
+float boost_pressure = 0.0;
 
 /* vars for EGT */
-double egt = 0.0;
+float egt = 0.0;
 
-double intercooler_temp = 0.0;
+float intercooler_temp = 0.0;
 
 /* vars for atmos sensor */
 float atmos_temp = 0.0;
@@ -190,7 +202,7 @@ void IRAM_ATTR change_isr() {
     } else if (pulse == 1) {
       oil_pressure = (((4096.0 / ch[1]) * input[1]) - 128) / 384.0 + 0.5;
     } else if (pulse == 2) {
-      double val = (1024.0 / ch[2]) * input[2];
+      float val = (1024.0 / ch[2]) * input[2];
       if (val >= 231.00 && val <= 281.00) {
         oil_sensor_status = 1;
       } else if (val >= 359.00 && val <= 409.00) {
@@ -251,7 +263,7 @@ void readBoostPressureSensor() {
   // So I can just use the ADC value directly and it should be pretty close.
   float targetPressure = boostPressureSensor;  //map(boostPressureSensor, 0, 4095, 0, 410);
 
-  boostPressure = boostPressureSensor;  // boostPressure + (targetPressure - boostPressure) * easingFactor;
+  boost_pressure = boostPressureSensor;  // boostPressure + (targetPressure - boostPressure) * easing_factor;
 }
 
 void readEGTSensor() {
@@ -265,6 +277,7 @@ void readEGTSensor() {
   }
 }
 
+int count;
 
 void setup() {
   Serial.begin(115200);
@@ -352,59 +365,64 @@ void setup() {
     Serial.println("ERROR.");
     while (1) delay(10);
   }
-  Serial.println("Initializing Boost sensor...");
-  //pinMode(BOOST_PRESSURE_PIN, INPUT);
+  // Serial.println("Initializing Boost sensor...");
+  // //pinMode(BOOST_PRESSURE_PIN, INPUT);
 
-  // Wait for sensors
-  Serial.println("Initializing oil sensor...");
-  // Set up oil temp/pressure sensor
-  pinMode(OIL_PRESSURE_PIN, INPUT);
+  // // Wait for sensors
+  // Serial.println("Initializing oil sensor...");
+  // // Set up oil temp/pressure sensor
+  // pinMode(OIL_PRESSURE_PIN, INPUT);
   // Wait for the sensor to wake up
   // Add rising and falling interrupts
-  attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), change_isr, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), change_isr, CHANGE);
+
+  count = 0;
 
   Serial.println("Setup done");
 }
 
-int count = 0;
-
 void loop() {
 
-
-
   readAtmosPressureSensor();
-  readIntercoolerTemperatureSensor();
-  readOilSensor();
+  // readIntercoolerTemperatureSensor();
+  // readOilSensor();
   readBoostPressureSensor();
   readEGTSensor();
 
-  if (count % 500) {
-
+  if (count % 20000) {
+    Serial.println(count);
     Serial.print("Atmos:");
     Serial.print(atmos_temp);
     Serial.println(" °C ");
     Serial.print(atmos_pressure / 100.0F);
     Serial.println(" hPa");
 
-    Serial.print("intercooler temp:");
-    Serial.print(intercooler_temp);
-    Serial.print("; ");
-    Serial.print("Oil temp:");
-    Serial.print(oil_temp);
-    Serial.print("; ");
-    Serial.print("Oil pressure:");
-    Serial.print(oil_pressure);
-    Serial.print("; ");
+  //   Serial.print("intercooler temp:");
+  //   Serial.print(intercooler_temp);
+  //   Serial.print("; ");
+  //   Serial.print("Oil temp:");
+  //   Serial.print(oil_temp);
+  //   Serial.print("; ");
+  //   Serial.print("Oil pressure:");
+  //   Serial.print(oil_pressure);
+  //   Serial.print("; ");
     Serial.print("EGT:");
     Serial.print(egt);
     Serial.print("; ");
     Serial.print("Boost:");
-    Serial.print(boostPressure);
+    Serial.print(boost_pressure);
     Serial.println("; ");
   }
-  lv_label_set_text_fmt(oil_temp_label, "%.1f", oil_temp);
-  lv_label_set_text_fmt(oil_pressure_label, "%.1f", oil_pressure);
-  lv_label_set_text_fmt(egt_label, "%.1f", egt);
+  char buffer[6];
+  dtostrf(boost_pressure,2, 1, buffer);
+  lv_label_set_text(boost_pressure_label, buffer);
+  dtostrf(oil_temp,2, 1, buffer);
+  lv_label_set_text(oil_temp_label, buffer);
+  dtostrf(oil_pressure,2, 1, buffer);
+  lv_label_set_text(oil_pressure_label, buffer);
+  dtostrf(egt,2, 1, buffer);
+  lv_label_set_text(egt_label,  buffer);
+  lv_label_set_text_fmt(count_label, "%d", count);
   // lv_meter_set_indicator_value(boost_guage, needle, boostPressure);
 
   lv_task_handler(); /* let the GUI do its work */
