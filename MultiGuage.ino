@@ -158,18 +158,7 @@ void init_ui() {
   // needle = lv_meter_add_needle_line(boost_guage, scale, 4, lv_palette_main(LV_PALETTE_GREY), -10);
 }
 
-/* Vars for oil pressure */
-// Keep track of the current and last timer.
-volatile unsigned long timer[2];
-// keep trackk of the time spent on a channel.
-volatile unsigned long ch[3];
-// keep track of the old level
-volatile byte level;
-volatile int input[3];
-volatile int pulse = 0;
-volatile double oil_temp;
-volatile double oil_pressure;
-volatile byte oil_sensor_status;
+/** Sensor vars */
 
 /* Vars for boost pressure */
 float easing_factor = 0.1;
@@ -179,33 +168,41 @@ float boost_pressure = 0.0;
 /* vars for EGT */
 float egt = 0.0;
 
+/* vars for Intercooler Temp */
 float intercooler_temp = 0.0;
 
 /* vars for atmos sensor */
 float atmos_temp = 0.0;
 float atmos_pressure = 0.0;
 
+/* Vars for oil pressure */
+enum PulseType {
+    UNKNOWN,
+    DIAGNOSTIC,
+    TEMPERATURE,
+    PRESSURE
+};
+volatile double oil_temp;
+volatile double oil_pressure;
+volatile byte oil_sensor_status;
+volatile bool sequenceComplete = false;
+volatile PulseType lastPulse = UNKNOWN;
+volatile long pulseDuration = 0;
+volatile long inputDuration = 0;
+volatile long startTime = 0;
 
 // PWM reading from oil temp/pressure sensor
-void IRAM_ATTR change_isr() {
-  bool level = (GPIO.in & (1ULL << OIL_PRESSURE_PIN)) != 0;
-  timer[0] = micros();
-  if (level) {
-    ch[pulse] = timer[0] - timer[1];
-    timer[1] = timer[0];
-    if (ch[pulse] < 3000) {
-      pulse = 0;
-    } else {
-      pulse++;
-    }
-  } else {
-    input[pulse] = timer[0] - timer[1];
-    if (pulse == 0) {
-      oil_temp = ((4096.0 / ch[0]) * input[0] - 128) / 19.2 - 40;
-    } else if (pulse == 1) {
-      oil_pressure = (((4096.0 / ch[1]) * input[1]) - 128) / 384.0 + 0.5;
-    } else if (pulse == 2) {
-      float val = (1024.0 / ch[2]) * input[2];
+void IRAM_ATTR oilSensorPWMInterrupt() {
+  bool pinState = (GPIO.in & (1ULL << OIL_PRESSURE_PIN)) != 0;
+  unsigned long currentTime = micros();
+  if (pinState) {
+    // Start of rising edge of next pulse.
+    pulseDuration = currentTime - startTime;
+    startTime = currentTime;
+    if (pulseDuration < 3000 && lastPulse == UNKNOWN) {
+      // We just saw a diagnostic pulse, so the next pulse will be a temperature.
+      lastPulse = DIAGNOSTIC;
+      double val = (1024.0 / pulseDuration) * inputDuration;
       if (val >= 231.00 && val <= 281.00) {
         oil_sensor_status = 1;
       } else if (val >= 359.00 && val <= 409.00) {
@@ -216,6 +213,21 @@ void IRAM_ATTR change_isr() {
         oil_sensor_status = 4;
       }
     }
+    else if (lastPulse == DIAGNOSTIC) {
+      oil_temp = ((4096.0 / pulseDuration) * inputDuration - 128) / 19.2 - 40;
+      lastPulse = TEMPERATURE;
+    }
+    else if (lastPulse == TEMPERATURE) {
+      oil_pressure = (((4096.0 / pulseDuration) * inputDuration) - 128) / 384.0 + 0.5;
+      lastPulse = PRESSURE;
+    }
+    else if (lastPulse == PRESSURE) { 
+      sequenceComplete = true;
+    }
+    
+  } else {
+    // Falling edge = End of input
+    inputDuration = currentTime - startTime;
   }
 }
 
@@ -244,7 +256,12 @@ void readIntercoolerTemperatureSensor() {
 }
 
 void readOilSensor() {
-  // Take a snapshot of the oil sensor reading and use that for
+  lastPulse = UNKNOWN;
+  sequenceComplete = false;
+  attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
+  // Stay here until the sequence is complete.
+  while(!sequenceComplete);
+  detachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN));
 }
 
 /**
@@ -367,16 +384,11 @@ void setup() {
     Serial.println("ERROR.");
     while (1) delay(10);
   }
-  // Serial.println("Initializing Boost sensor...");
-  // //pinMode(BOOST_PRESSURE_PIN, INPUT);
 
   // // Wait for sensors
-  // Serial.println("Initializing oil sensor...");
-  // // Set up oil temp/pressure sensor
-  // pinMode(OIL_PRESSURE_PIN, INPUT);
-  // Wait for the sensor to wake up
-  // Add rising and falling interrupts
-  //attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), change_isr, CHANGE);
+  Serial.println("Initializing oil sensor...");
+  // Set up oil temp/pressure sensor
+  pinMode(OIL_PRESSURE_PIN, INPUT);
 
   count = 0;
 
