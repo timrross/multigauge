@@ -211,7 +211,7 @@ void IRAM_ATTR change_isr() {
       } else if (val >= 359.00 && val <= 409.00) {
         oil_sensor_status = 2;
       } else if (val >= 487.00 && val <= 537.00) {
-        oil_sensor_status = 4;
+        oil_sensor_status = 3;
       } else if (val >= 615.00 && val <= 655.00) {
         oil_sensor_status = 4;
       }
