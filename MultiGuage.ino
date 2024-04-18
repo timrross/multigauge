@@ -93,6 +93,8 @@ void init_ui() {
   // lv_obj_center(boost_guage);
   // lv_obj_set_size(boost_guage, 470, 470);
 
+  lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), LV_PART_MAIN);
+
   static lv_style_t style;
   lv_style_init(&style);
   lv_style_set_bg_color(&style, lv_color_black());
@@ -126,6 +128,7 @@ void init_ui() {
   lv_obj_set_width(count_label, LV_SIZE_CONTENT);
   lv_label_set_text(count_label, "--");
   lv_obj_align(count_label, LV_ALIGN_CENTER, 0, -40);
+  lv_obj_add_style(count_label, &style, LV_PART_MAIN);
 
   boost_pressure_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(boost_pressure_label, LV_SIZE_CONTENT);
@@ -263,7 +266,7 @@ void readBoostPressureSensor() {
   // So I can just use the ADC value directly and it should be pretty close.
   float targetPressure = boostPressureSensor;  //map(boostPressureSensor, 0, 4095, 0, 410);
 
-  boost_pressure = boostPressureSensor;  // boostPressure + (targetPressure - boostPressure) * easing_factor;
+  boost_pressure = max(boostPressureSensor, 0.0F);  // boostPressure + (targetPressure - boostPressure) * easing_factor;
 }
 
 void readEGTSensor() {
@@ -344,8 +347,7 @@ void setup() {
     init_ui();
   }
 
-  while (!Serial)
-    ;  // time to get serial running
+  while (!Serial) delay(5); // time to get serial running
 
   Serial.println("Initializing Atmos Pressure Sensor...");
   if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
