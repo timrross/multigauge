@@ -283,7 +283,8 @@ void readBoostPressureSensor() {
   // So I can just use the ADC value directly and it should be pretty close.
   float targetPressure = boostPressureSensor;  //map(boostPressureSensor, 0, 4095, 0, 410);
 
-  boost_pressure = max(boostPressureSensor, 0.0F);  // boostPressure + (targetPressure - boostPressure) * easing_factor;
+  // Set boost pressure to hPa
+  boost_pressure = max((boostPressureSensor * 1000.0 + 200), 0.0) ;  // boostPressure + (targetPressure - boostPressure) * easing_factor;
 }
 
 void readEGTSensor() {
