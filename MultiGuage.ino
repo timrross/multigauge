@@ -344,7 +344,7 @@ void readBoostPressureSensor() {
   float targetPressure = boostPressureSensor;  //map(boostPressureSensor, 0, 4095, 0, 410);
 
   // Set boost pressure to hPa
-  boost_pressure = max((boostPressureSensor * 1000.0 + 200), 0.0) ;  // boostPressure + (targetPressure - boostPressure) * easing_factor;
+  boost_pressure = max((boostPressureSensor * 1000.0 + 140), 0.0) ;  // boostPressure + (targetPressure - boostPressure) * easing_factor;
 }
 
 void readEGTSensor() {
