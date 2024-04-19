@@ -14,7 +14,7 @@
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
-#define BOOST_COEFFICIENT 1.3538
+#define BOOST_COEFFICIENT 1.4538
 #define BOOST_INTERCEPT 0.9388
 
 /*Set to your screen resolution*/
