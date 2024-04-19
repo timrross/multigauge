@@ -255,7 +255,11 @@ void IRAM_ATTR oilSensorPWMInterrupt() {
     // Start of rising edge of next pulse.
     pulseDuration = currentTime - startTime;
     startTime = currentTime;
-    if (pulseDuration < 3000 && lastPulse == UNKNOWN) {
+    if (pulseDuration < 920) {
+      // if the pulse duration is too short, then it's probably jitter/noise ignore it.
+      return;
+    }
+    if (pulseDuration < 1150 && lastPulse == UNKNOWN) {
       // We just saw a diagnostic pulse, so the next pulse will be a temperature.
       lastPulse = DIAGNOSTIC;
       double val = (1024.0 / pulseDuration) * inputDuration;
