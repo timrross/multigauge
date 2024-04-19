@@ -102,7 +102,7 @@ void init_ui() {
   lv_style_set_text_color(&style, lv_color_white());
   lv_style_set_text_letter_space(&style, 5);
   lv_style_set_text_line_space(&style, 20);
-  lv_style_set_text_font(&style, &lv_font_montserrat_24);
+  lv_style_set_text_font(&style, &lv_font_montserrat_36);
   lv_style_set_text_align(&style, LV_TEXT_ALIGN_CENTER);
 
   boost_pressure_label = lv_label_create(lv_scr_act());
@@ -140,7 +140,7 @@ void init_ui() {
   lv_scale_set_label_show(boost_guage, true);
   lv_scale_set_total_tick_count(boost_guage, 21);
   lv_scale_set_major_tick_every(boost_guage, 5);
-  lv_obj_set_style_length(boost_guage, 5, LV_PART_ITEMS);
+  lv_obj_set_style_length(boost_guage, 10, LV_PART_ITEMS);
   lv_obj_set_style_length(boost_guage, 20, LV_PART_INDICATOR);
   lv_scale_set_range(boost_guage, 0, 2000);
 
@@ -152,32 +152,32 @@ void init_ui() {
 
   needle_line = lv_line_create(boost_guage);
 
-  lv_obj_set_style_line_width(needle_line, 4, LV_PART_MAIN);
+  lv_obj_set_style_line_width(needle_line, 6, LV_PART_MAIN);
   lv_obj_set_style_line_rounded(needle_line, true, LV_PART_MAIN);
   lv_obj_set_style_line_color(needle_line, lv_color_white(), 0);
 
   static lv_style_t indicator_style;
   lv_style_init(&indicator_style);
-  lv_style_set_text_font(&indicator_style, &lv_font_montserrat_24);
+  lv_style_set_text_font(&indicator_style, &lv_font_montserrat_36);
   lv_style_set_text_color(&indicator_style, lv_color_white());
   lv_style_set_line_color(&indicator_style, lv_color_white());
-  lv_style_set_width(&indicator_style, 20U);      /*Tick length*/
-  lv_style_set_line_width(&indicator_style, 2U);  /*Tick width*/
+  lv_style_set_width(&indicator_style, 30U);      /*Tick length*/
+  lv_style_set_line_width(&indicator_style, 4U);  /*Tick width*/
   
   lv_obj_add_style(boost_guage, &indicator_style, LV_PART_INDICATOR);
 
   static lv_style_t minor_ticks_style;
   lv_style_init(&minor_ticks_style);
   lv_style_set_line_color(&minor_ticks_style, lv_color_white());
-  lv_style_set_width(&minor_ticks_style, 10U);         /*Tick length*/
-  lv_style_set_line_width(&minor_ticks_style, 2U);    /*Tick width*/
+  lv_style_set_width(&minor_ticks_style, 20U);         /*Tick length*/
+  lv_style_set_line_width(&minor_ticks_style, 4U);    /*Tick width*/
   lv_obj_add_style(boost_guage, &minor_ticks_style, LV_PART_ITEMS);
 
   static lv_style_t main_line_style;
   lv_style_init(&main_line_style);
   /* Main line properties */
   lv_style_set_arc_color(&main_line_style, lv_color_white());
-  lv_style_set_arc_width(&main_line_style, 2U); /*Tick width*/
+  lv_style_set_arc_width(&main_line_style, 4U); /*Tick width*/
   lv_obj_add_style(boost_guage, &main_line_style, LV_PART_MAIN);
 
   /* Add a section */
@@ -198,6 +198,7 @@ void init_ui() {
 
   /* Main line properties */
   lv_style_set_arc_color(&section_main_line_style, lv_palette_darken(LV_PALETTE_RED, 3));
+  lv_style_set_line_width(&section_main_line_style, 4U);  /*Tick width*/
 
 
   /* Configure section styles */
