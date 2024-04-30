@@ -108,11 +108,11 @@ void init_ui() {
   lv_style_set_text_font(&style, &lv_font_montserrat_36);
   lv_style_set_text_align(&style, LV_TEXT_ALIGN_CENTER);
 
-  boost_pressure_label = lv_label_create(lv_scr_act());
-  lv_obj_set_width(boost_pressure_label, LV_SIZE_CONTENT);
-  lv_label_set_text(boost_pressure_label, "--");
-  lv_obj_align(boost_pressure_label, LV_ALIGN_CENTER, 0, 0);
-  lv_obj_add_style(boost_pressure_label, &style, LV_PART_MAIN);
+  // boost_pressure_label = lv_label_create(lv_scr_act());
+  // lv_obj_set_width(boost_pressure_label, LV_SIZE_CONTENT);
+  // lv_label_set_text(boost_pressure_label, "--");
+  // lv_obj_align(boost_pressure_label, LV_ALIGN_CENTER, 0, 0);
+  // lv_obj_add_style(boost_pressure_label, &style, LV_PART_MAIN);
 
   oil_temp_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
@@ -458,24 +458,28 @@ void loop() {
   readEGTSensor();
 
   if (count % 500 == 0) {
-    Serial.println(count);
     Serial.print("Atmos:");
     Serial.print(atmos_temp);
-    Serial.println(" °C ");
-    Serial.print(atmos_pressure / 100.0F);
-    Serial.println(" hPa");
+    Serial.print(" °C ");
+    Serial.print(atmos_pressure / 100000.0F);
+    Serial.println(" Bar");
+
     Serial.print("intercooler temp:");
     Serial.print(intercooler_temp);
-    Serial.print("; ");
+    Serial.print(" °C; ");
+
     Serial.print("Oil temp:");
     Serial.print(oil_temp);
-    Serial.print("; ");
+    Serial.print("°C; ");
+
     Serial.print("Oil pressure:");
     Serial.print(oil_pressure);
-    Serial.print("; ");
+    Serial.print(" Bar; ");
+
     Serial.print("EGT:");
     Serial.print(egt);
-    Serial.print("; ");
+    Serial.print(" °C; ");
+    
     Serial.print("Boost:");
     Serial.print(boost_pressure);
     Serial.print(" psi (");
@@ -489,9 +493,11 @@ void loop() {
   
   dtostrf(oil_temp,2, 0, buffer);
   lv_label_set_text(oil_temp_label, buffer);
+
   dtostrf(oil_pressure,2, 1, buffer);
   lv_label_set_text(oil_pressure_label, buffer);
-  dtostrf(egt,2, 1, buffer);
+  
+  dtostrf(egt,2, 0, buffer);
   lv_label_set_text(egt_label,  buffer);
   
 
