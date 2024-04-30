@@ -5,6 +5,8 @@
 #include <Arduino_GFX_Library.h>
 #include <lvgl.h>
 
+#define PSI_BAR_CONVERSION 14.5038
+
 // Pins for reading sensors
 #define OIL_PRESSURE_PIN MOSI
 #define BOOST_PRESSURE_PIN A0
@@ -15,8 +17,9 @@
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
-#define BOOST_COEFFICIENT 1.4538
-#define BOOST_INTERCEPT 0.9388
+/* These values give a boost sensor reading in psi */
+#define BOOST_COEFFICIENT 12.864
+#define BOOST_INTERCEPT -12.877
 
 /*Set to your screen resolution*/
 #define TFT_HOR_RES 480
@@ -475,19 +478,23 @@ void loop() {
     Serial.print("; ");
     Serial.print("Boost:");
     Serial.print(boost_pressure);
-    Serial.println("; ");
+    Serial.print(" psi (");
+    Serial.print(boost_pressure / PSI_BAR_CONVERSION);
+    Serial.println(" Bar);");
   }
   char buffer[6];
-  dtostrf(boost_pressure, 2, 1, buffer);
-  lv_label_set_text(boost_pressure_label, buffer);
-  dtostrf(oil_temp,2, 1, buffer);
+  set_needle_line_value((int)(boost_pressure / PSI_BAR_CONVERSION * 1000));
+  // dtostrf(boost_pressure / PSI_BAR_CONVERSION, 2, 1, buffer);
+  // lv_label_set_text(boost_pressure_label, buffer);
+  
+  dtostrf(oil_temp,2, 0, buffer);
   lv_label_set_text(oil_temp_label, buffer);
   dtostrf(oil_pressure,2, 1, buffer);
   lv_label_set_text(oil_pressure_label, buffer);
   dtostrf(egt,2, 1, buffer);
   lv_label_set_text(egt_label,  buffer);
-  // lv_meter_set_indicator_value(boost_guage, needle, boostPressure);
-  set_needle_line_value((int)boost_pressure);
+  
+
 
   lv_task_handler(); /* let the GUI do its work */
 
