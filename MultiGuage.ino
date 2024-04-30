@@ -6,7 +6,8 @@
 #include <lvgl.h>
 
 // Pins for reading sensors
-#define OIL_PRESSURE_PIN A0
+#define OIL_PRESSURE_PIN MOSI
+#define BOOST_PRESSURE_PIN A0
 
 #define STEINHART_A 0.00135721593521515000000
 #define STEINHART_B 0.00024467275139054400000
@@ -46,7 +47,6 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
 // Sensors
 Adafruit_MAX31855 thermocouple(SCK, SS, MISO);  // EGT Sensor module
 Adafruit_BME280 bme;                            // atmosphere pressure/temp module
-Adafruit_ADS1115 ads;                           // ADC extender module for sensor input
 
 /* Change to your screen resolution */
 uint32_t screenWidth;
@@ -331,21 +331,13 @@ void readOilSensor() {
  * I used excel to calculate the equation using linear regression on the datasheet provided.
  */
 void readBoostPressureSensor() {
-  int16_t adc0;
-  float volts;
+  float volts, volts5v, boostPressureSensor;
   // read from analog in on main board.
-  //int boostPressureSensor = analogRead(BOOST_PRESSURE_PIN);
-  // Read from ADC module
-  adc0 = ads.readADC_SingleEnded(2);
-  volts = ads.computeVolts(adc0);
-  // Do the voltage calc
-  float boostPressureSensor = BOOST_COEFFICIENT * volts - BOOST_INTERCEPT;
-  // interestingly, the pressure ADC works out as a range between -1000 and 3100 hpa (-1 - 3.1 bar)
-  // So I can just use the ADC value directly and it should be pretty close.
-  float targetPressure = boostPressureSensor;  //map(boostPressureSensor, 0, 4095, 0, 410);
-
-  // Set boost pressure to hPa
-  boost_pressure = max((boostPressureSensor * 1000.0 + 140), 0.0) ;  // boostPressure + (targetPressure - boostPressure) * easing_factor;
+  volts = analogRead(BOOST_PRESSURE_PIN) / 4095.0F * 3.4;
+  // calc what the lower 3.3v signal would be in 5v using voltage divider equation
+  volts5v = volts * (5600 + 10000) / 10000.0;
+  boostPressureSensor = (BOOST_COEFFICIENT * volts5v + BOOST_INTERCEPT);
+  boost_pressure = boostPressureSensor;// boostPressure + (targetPressure - boostPressure) * easingFactor;
 }
 
 void readEGTSensor() {
@@ -434,12 +426,6 @@ void setup() {
     while (1) delay(10);
   }
 
-  Serial.println("Initializing ADC Module...");
-  if (!ads.begin()) {
-    Serial.println("Failed to initialize ADS.");
-    while (1) delay(10);
-  }
-
   // Set up EGT thermocouple
   Serial.println("Initializing EGT sensor...");
   if (!thermocouple.begin()) {
@@ -447,7 +433,10 @@ void setup() {
     while (1) delay(10);
   }
 
-  // // Wait for sensors
+  // Wait for sensors
+  Serial.println("Initializing Boost sensor...");
+  pinMode(BOOST_PRESSURE_PIN, INPUT);
+
   Serial.println("Initializing oil sensor...");
   // Set up oil temp/pressure sensor
   pinMode(OIL_PRESSURE_PIN, INPUT);
