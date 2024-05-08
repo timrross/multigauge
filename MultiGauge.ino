@@ -28,6 +28,8 @@
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is in bytes*/
 #define DRAW_BUF_SIZE (TFT_HOR_RES * TFT_VER_RES / 10 * (LV_COLOR_DEPTH / 8))
 
+LV_IMG_DECLARE(gauge_bg);
+LV_IMG_DECLARE(needle);
 
 Arduino_XCA9554SWSPI *expander = new Arduino_XCA9554SWSPI(
   PCA_TFT_RESET, PCA_TFT_CS, PCA_TFT_SCK, PCA_TFT_MOSI,
@@ -61,8 +63,8 @@ lv_color_t *disp_draw_buf;
 #if LV_USE_LOG != 0
   void my_print(lv_log_level_t level, const char *buf) {
     LV_UNUSED(level);
-    Serial.println(buf);
-    Serial.flush();
+    // Serial.println(buf);
+    // Serial.flush();
   }
 #endif
 
@@ -82,8 +84,8 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
   lv_disp_flush_ready(disp);
 }
 
-static lv_obj_t * boost_guage;
-static lv_obj_t * needle_line;
+static lv_obj_t * boost_gauge;
+static lv_obj_t * needle_img;
 static lv_obj_t * count_label;
 static lv_obj_t * boost_pressure_label;
 static lv_obj_t * oil_temp_label;
@@ -92,11 +94,13 @@ static lv_obj_t * egt_label;
 
 void init_ui() {
 
-  // boost_guage = lv_meter_create(lv_scr_act());
-  // lv_obj_center(boost_guage);
-  // lv_obj_set_size(boost_guage, 470, 470);
-
   lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), LV_PART_MAIN);
+
+  lv_obj_t * background = lv_image_create(lv_screen_active());
+  lv_obj_align(background, LV_ALIGN_CENTER, 0, 0);
+
+  /*From variable*/
+  lv_image_set_src(background, &gauge_bg);
 
   static lv_style_t style;
   lv_style_init(&style);
@@ -107,12 +111,6 @@ void init_ui() {
   lv_style_set_text_line_space(&style, 20);
   lv_style_set_text_font(&style, &lv_font_montserrat_36);
   lv_style_set_text_align(&style, LV_TEXT_ALIGN_CENTER);
-
-  // boost_pressure_label = lv_label_create(lv_scr_act());
-  // lv_obj_set_width(boost_pressure_label, LV_SIZE_CONTENT);
-  // lv_label_set_text(boost_pressure_label, "--");
-  // lv_obj_align(boost_pressure_label, LV_ALIGN_CENTER, 0, 0);
-  // lv_obj_add_style(boost_pressure_label, &style, LV_PART_MAIN);
 
   oil_temp_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
@@ -132,90 +130,43 @@ void init_ui() {
   lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 120);
   lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
 
+  // Initialize a style variable
+  static lv_style_t transparent;
+  lv_style_init(&transparent);
+  // Set the background opacity to transparent
+  lv_style_set_opa(&transparent, LV_OPA_TRANSP);
+
   /*Add a scale first*/
-  boost_guage = lv_scale_create(lv_screen_active());
-  lv_obj_set_size(boost_guage, 470, 470);
-  lv_scale_set_mode(boost_guage, LV_SCALE_MODE_ROUND_INNER);
-  // lv_obj_set_style_bg_opa(boost_guage, LV_OPA_COVER, 100);
-  // lv_obj_set_style_radius(boost_guage, LV_RADIUS_CIRCLE, 0);
-  // lv_obj_set_style_clip_corner(boost_guage, true, 0);
-  lv_obj_align(boost_guage, LV_ALIGN_CENTER, 0, 0);
-  lv_scale_set_label_show(boost_guage, true);
-  lv_scale_set_total_tick_count(boost_guage, 21);
-  lv_scale_set_major_tick_every(boost_guage, 5);
-  lv_obj_set_style_length(boost_guage, 10, LV_PART_ITEMS);
-  lv_obj_set_style_length(boost_guage, 20, LV_PART_INDICATOR);
-  lv_scale_set_range(boost_guage, 0, 2000);
+  boost_gauge = lv_scale_create(lv_screen_active());
+  lv_obj_set_size(boost_gauge, 460, 460);
+  lv_scale_set_mode(boost_gauge, LV_SCALE_MODE_ROUND_INNER);
+  lv_obj_align(boost_gauge, LV_ALIGN_CENTER, 0, 0);
+  lv_scale_set_label_show(boost_gauge, false);
+  lv_scale_set_total_tick_count(boost_gauge, 21);
+  lv_scale_set_major_tick_every(boost_gauge, 5);
+  lv_obj_set_style_length(boost_gauge, 10, LV_PART_ITEMS);
+  lv_obj_set_style_length(boost_gauge, 20, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(boost_gauge, 0, LV_PART_MAIN);
+  // Apply the style to the object
+  lv_obj_add_style(boost_gauge, &transparent, LV_PART_ITEMS);
+  lv_obj_add_style(boost_gauge, &transparent, LV_PART_INDICATOR);
+  lv_scale_set_range(boost_gauge, 0, 2000);
 
-  static const char * custom_labels[] = {"0", "0.5", "1.0", "1.5", "2.0", NULL};
-  lv_scale_set_text_src(boost_guage, custom_labels);
+  lv_scale_set_angle_range(boost_gauge, 270);
+  lv_scale_set_rotation(boost_gauge, 135);
 
-  lv_scale_set_angle_range(boost_guage, 270);
-  lv_scale_set_rotation(boost_guage, 135);
-
-  needle_line = lv_line_create(boost_guage);
-
-  lv_obj_set_style_line_width(needle_line, 6, LV_PART_MAIN);
-  lv_obj_set_style_line_rounded(needle_line, true, LV_PART_MAIN);
-  lv_obj_set_style_line_color(needle_line, lv_color_white(), 0);
-
-  static lv_style_t indicator_style;
-  lv_style_init(&indicator_style);
-  lv_style_set_text_font(&indicator_style, &lv_font_montserrat_36);
-  lv_style_set_text_color(&indicator_style, lv_color_white());
-  lv_style_set_line_color(&indicator_style, lv_color_white());
-  lv_style_set_width(&indicator_style, 30U);      /*Tick length*/
-  lv_style_set_line_width(&indicator_style, 4U);  /*Tick width*/
-  
-  lv_obj_add_style(boost_guage, &indicator_style, LV_PART_INDICATOR);
-
-  static lv_style_t minor_ticks_style;
-  lv_style_init(&minor_ticks_style);
-  lv_style_set_line_color(&minor_ticks_style, lv_color_white());
-  lv_style_set_width(&minor_ticks_style, 20U);         /*Tick length*/
-  lv_style_set_line_width(&minor_ticks_style, 4U);    /*Tick width*/
-  lv_obj_add_style(boost_guage, &minor_ticks_style, LV_PART_ITEMS);
-
-  static lv_style_t main_line_style;
-  lv_style_init(&main_line_style);
-  /* Main line properties */
-  lv_style_set_arc_color(&main_line_style, lv_color_white());
-  lv_style_set_arc_width(&main_line_style, 4U); /*Tick width*/
-  lv_obj_add_style(boost_guage, &main_line_style, LV_PART_MAIN);
-
-  /* Add a section */
-  static lv_style_t section_minor_tick_style;
-  static lv_style_t section_label_style;
-  static lv_style_t section_main_line_style;
-
-  lv_style_init(&section_label_style);
-  lv_style_init(&section_minor_tick_style);
-  lv_style_init(&section_main_line_style);
-
-  /* Label style properties */
-  lv_style_set_text_color(&section_label_style, lv_palette_darken(LV_PALETTE_RED, 3));
-
-  lv_style_set_line_color(&section_label_style, lv_palette_darken(LV_PALETTE_RED, 3));
-
-  lv_style_set_line_color(&section_minor_tick_style, lv_palette_lighten(LV_PALETTE_RED, 2));
-
-  /* Main line properties */
-  lv_style_set_arc_color(&section_main_line_style, lv_palette_darken(LV_PALETTE_RED, 3));
-  lv_style_set_line_width(&section_main_line_style, 4U);  /*Tick width*/
-
-
-  /* Configure section styles */
-  lv_scale_section_t * section = lv_scale_add_section(boost_guage);
-  lv_scale_section_set_range(section, 1500, 2000);
-  lv_scale_section_set_style(section, LV_PART_INDICATOR, &section_label_style);
-  lv_scale_section_set_style(section, LV_PART_ITEMS, &section_minor_tick_style);
-  lv_scale_section_set_style(section, LV_PART_MAIN, &section_main_line_style);
+  needle_img = lv_image_create(boost_gauge);
+  lv_image_set_src(needle_img, &needle);
+  // As it's aligned to center, need to set the x y to half the width/height of the needle image.
+  lv_obj_align(needle_img, LV_ALIGN_CENTER, 122, -13);
+  // Set the pivot to the base of the needle
+  lv_image_set_pivot(needle_img, 9, 13);
 
 }
 
-static void set_needle_line_value(int32_t v)
+static void set_needle_value(int32_t v)
 {
-    lv_scale_set_line_needle_value(boost_guage, needle_line, -60, v);
+  lv_scale_set_image_needle_value(boost_gauge, needle_img, v);
 }
 
 /** Sensor vars */
@@ -346,18 +297,19 @@ void readBoostPressureSensor() {
 void readEGTSensor() {
   egt = thermocouple.readCelsius();
   if (isnan(egt)) {
-    Serial.println("Thermocouple fault(s) detected!");
+    // Serial.println("Thermocouple fault(s) detected!");
     uint8_t e = thermocouple.readError();
-    if (e & MAX31855_FAULT_OPEN) Serial.println("FAULT: Thermocouple is open - no connections.");
-    if (e & MAX31855_FAULT_SHORT_GND) Serial.println("FAULT: Thermocouple is short-circuited to GND.");
-    if (e & MAX31855_FAULT_SHORT_VCC) Serial.println("FAULT: Thermocouple is short-circuited to VCC.");
+    // if (e & MAX31855_FAULT_OPEN) // Serial.println("FAULT: Thermocouple is open - no connections.");
+    // if (e & MAX31855_FAULT_SHORT_GND) // Serial.println("FAULT: Thermocouple is short-circuited to GND.");
+    // if (e & MAX31855_FAULT_SHORT_VCC) // Serial.println("FAULT: Thermocouple is short-circuited to VCC.");
   }
 }
 
 int count;
 
 void setup() {
-  Serial.begin(115200);
+  // Serial.begin(115200);
+  //while (!Serial) delay(5); // time to get // Serial running
 
   #ifdef GFX_EXTRA_PRE_INIT
     GFX_EXTRA_PRE_INIT();
@@ -365,7 +317,7 @@ void setup() {
 
   // Init Display
   if (!gfx->begin()) {
-    Serial.println("gfx->begin() failed!");
+    // Serial.println("gfx->begin() failed!");
   }
   gfx->fillScreen(BLACK);
 
@@ -404,11 +356,11 @@ void setup() {
       }
     #endif  // !DIRECT_MODE
   #else   // !ESP32
-    Serial.println("LVGL draw_buf allocate MALLOC_CAP_INTERNAL failed! malloc again...");
+    // Serial.println("LVGL draw_buf allocate MALLOC_CAP_INTERNAL failed! malloc again...");
     disp_draw_buf = (lv_color_t *)malloc(bufSize * 2);
   #endif  // !ESP32
   if (!disp_draw_buf) {
-    Serial.println("LVGL disp_draw_buf allocate failed!");
+    // Serial.println("LVGL disp_draw_buf allocate failed!");
   } else {
     disp = lv_display_create(screenWidth, screenHeight);
     lv_display_set_flush_cb(disp, my_disp_flush);
@@ -421,32 +373,32 @@ void setup() {
     init_ui();
   }
 
-  while (!Serial) delay(5); // time to get serial running
 
-  Serial.println("Initializing Atmos Pressure Sensor...");
+
+  // Serial.println("Initializing Atmos Pressure Sensor...");
   if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
-    Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
+    // Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
     while (1) delay(10);
   }
 
   // Set up EGT thermocouple
-  Serial.println("Initializing EGT sensor...");
+  // Serial.println("Initializing EGT sensor...");
   if (!thermocouple.begin()) {
-    Serial.println("ERROR.");
+    // Serial.println("ERROR.");
     while (1) delay(10);
   }
 
   // Wait for sensors
-  Serial.println("Initializing Boost sensor...");
+  // Serial.println("Initializing Boost sensor...");
   pinMode(BOOST_PRESSURE_PIN, INPUT);
 
-  Serial.println("Initializing oil sensor...");
+  // Serial.println("Initializing oil sensor...");
   // Set up oil temp/pressure sensor
   pinMode(OIL_PRESSURE_PIN, INPUT);
 
   count = 0;
 
-  Serial.println("Setup done");
+  // Serial.println("Setup done");
 }
 
 void loop() {
@@ -458,36 +410,36 @@ void loop() {
   readEGTSensor();
 
   if (count % 500 == 0) {
-    Serial.print("Atmos:");
-    Serial.print(atmos_temp);
-    Serial.print(" °C ");
-    Serial.print(atmos_pressure / 100000.0F);
-    Serial.println(" Bar");
+    // Serial.print("Atmos:");
+    // Serial.print(atmos_temp);
+    // Serial.print(" °C ");
+    // Serial.print(atmos_pressure / 100000.0F);
+    // Serial.println(" Bar");
 
-    Serial.print("intercooler temp:");
-    Serial.print(intercooler_temp);
-    Serial.print(" °C; ");
+    // Serial.print("intercooler temp:");
+    // Serial.print(intercooler_temp);
+    // Serial.print(" °C; ");
 
-    Serial.print("Oil temp:");
-    Serial.print(oil_temp);
-    Serial.print("°C; ");
+    // Serial.print("Oil temp:");
+    // Serial.print(oil_temp);
+    // Serial.print("°C; ");
 
-    Serial.print("Oil pressure:");
-    Serial.print(oil_pressure);
-    Serial.print(" Bar; ");
+    // Serial.print("Oil pressure:");
+    // Serial.print(oil_pressure);
+    // Serial.print(" Bar; ");
 
-    Serial.print("EGT:");
-    Serial.print(egt);
-    Serial.print(" °C; ");
+    // Serial.print("EGT:");
+    // Serial.print(egt);
+    // Serial.print(" °C; ");
     
-    Serial.print("Boost:");
-    Serial.print(boost_pressure);
-    Serial.print(" psi (");
-    Serial.print(boost_pressure / PSI_BAR_CONVERSION);
-    Serial.println(" Bar);");
+    // Serial.print("Boost:");
+    // Serial.print(boost_pressure);
+    // Serial.print(" psi (");
+    // Serial.print(boost_pressure / PSI_BAR_CONVERSION);
+    // Serial.println(" Bar);");
   }
   char buffer[6];
-  set_needle_line_value((int)(boost_pressure / PSI_BAR_CONVERSION * 1000));
+  set_needle_value((int)(boost_pressure / PSI_BAR_CONVERSION * 1000));
   // dtostrf(boost_pressure / PSI_BAR_CONVERSION, 2, 1, buffer);
   // lv_label_set_text(boost_pressure_label, buffer);
   
