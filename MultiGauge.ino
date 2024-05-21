@@ -108,6 +108,7 @@ void init_ui() {
 
   /*From variable*/
   lv_image_set_src(background, &gauge_bg);
+  lv_obj_set_size(background, 480, 480);
 
   static lv_style_t style;
   lv_style_init(&style);
@@ -125,17 +126,11 @@ void init_ui() {
   // Set the background opacity to transparent
   lv_style_set_opa(&transparent, LV_OPA_TRANSP);
 
-  /*Add a scale first*/
+  /* Add a scale just for the nice needle */
   boost_gauge = lv_scale_create(lv_screen_active());
-  lv_obj_set_size(boost_gauge, 460, 460);
+  lv_obj_set_size(boost_gauge, 480, 480);
   lv_scale_set_mode(boost_gauge, LV_SCALE_MODE_ROUND_INNER);
-  lv_obj_align(boost_gauge, LV_ALIGN_CENTER, 0, 0);
-  lv_scale_set_label_show(boost_gauge, false);
-  lv_scale_set_total_tick_count(boost_gauge, 21);
-  lv_scale_set_major_tick_every(boost_gauge, 5);
-  lv_obj_set_style_length(boost_gauge, 10, LV_PART_ITEMS);
-  lv_obj_set_style_length(boost_gauge, 20, LV_PART_INDICATOR);
-  lv_obj_set_style_bg_opa(boost_gauge, 0, LV_PART_MAIN);
+  lv_obj_center(boost_gauge);
   // Apply the style to the object
   lv_obj_add_style(boost_gauge, &transparent, LV_PART_ITEMS);
   lv_obj_add_style(boost_gauge, &transparent, LV_PART_INDICATOR);
@@ -147,9 +142,9 @@ void init_ui() {
   needle_img = lv_image_create(boost_gauge);
   lv_image_set_src(needle_img, &needle);
   // As it's aligned to center, need to set the x y to half the width/height of the needle image.
-  lv_obj_align(needle_img, LV_ALIGN_CENTER, 122, -13);
+  lv_obj_align(needle_img, LV_ALIGN_CENTER, 116, 0);
   // Set the pivot to the base of the needle
-  lv_image_set_pivot(needle_img, 9, 13);
+  lv_image_set_pivot(needle_img, 3, 10);
   oil_temp_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
   lv_label_set_text(oil_temp_label, "--");
