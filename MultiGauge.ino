@@ -30,6 +30,7 @@
 #define DRAW_BUF_SIZE (TFT_HOR_RES * TFT_VER_RES / 10 * (LV_COLOR_DEPTH / 8))
 
 LV_IMG_DECLARE(gauge_bg);
+LV_IMG_DECLARE(gauge_active);
 LV_IMG_DECLARE(needle);
 
 Arduino_XCA9554SWSPI *expander = new Arduino_XCA9554SWSPI(
@@ -91,6 +92,7 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
   lv_disp_flush_ready(disp);
 }
 
+static lv_obj_t * active_boost;
 static lv_obj_t * boost_gauge;
 static lv_obj_t * needle_img;
 static lv_obj_t * count_label;
@@ -125,6 +127,33 @@ void init_ui() {
   lv_style_init(&transparent);
   // Set the background opacity to transparent
   lv_style_set_opa(&transparent, LV_OPA_TRANSP);
+
+  /*Create an Arc*/
+  active_boost = lv_arc_create(lv_screen_active());
+  lv_arc_set_range(active_boost, 0, 2000); // Set the range of the arc
+  lv_obj_set_size(active_boost, 480, 480);
+  lv_arc_set_rotation(active_boost, 135);
+  lv_arc_set_bg_angles(active_boost, 0, 270);
+  lv_arc_set_value(active_boost, 0);
+  lv_obj_center(active_boost);
+  lv_obj_remove_flag(active_boost, LV_OBJ_FLAG_CLICKABLE);  /*To not allow adjusting by click*/
+
+  // Create a style for the active boost indicator
+  static lv_style_t style_arc;
+  lv_style_init(&style_arc);
+  lv_style_set_arc_width(&style_arc, 75);
+  lv_style_set_arc_rounded(&style_arc, false);
+  lv_style_set_arc_color(&style_arc, lv_color_black()); // Black color for the remaining part
+  lv_style_set_arc_image_src(&style_arc, &gauge_active); // Set the background image
+  lv_style_set_bg_opa(&style_arc, LV_OPA_COVER); // Ensure the image is fully opaque
+
+  // Apply the style to the arc indicator part
+  lv_obj_add_style(active_boost, &style_arc, LV_PART_INDICATOR);
+  //lv_obj_add_style(arc, &transparent, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(active_boost, 0, LV_PART_MAIN);
+  //lv_obj_remove_style(arc, NULL, LV_PART_MAIN); // Remove the knob
+  lv_obj_remove_style(active_boost, NULL, LV_PART_KNOB); // Remove the knob
+
 
   /* Add a scale just for the nice needle */
   boost_gauge = lv_scale_create(lv_screen_active());
@@ -167,6 +196,7 @@ void init_ui() {
 
 static void set_needle_value(int32_t v)
 {
+  lv_arc_set_value(active_boost, v);
   lv_scale_set_image_needle_value(boost_gauge, needle_img, v);
 }
 
