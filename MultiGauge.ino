@@ -117,25 +117,7 @@ void init_ui() {
   lv_style_set_text_letter_space(&style, 5);
   lv_style_set_text_line_space(&style, 20);
   lv_style_set_text_font(&style, &lv_font_montserrat_36);
-  lv_style_set_text_align(&style, LV_TEXT_ALIGN_CENTER);
-
-  oil_temp_label = lv_label_create(lv_scr_act());
-  lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
-  lv_label_set_text(oil_temp_label, "--");
-  lv_obj_align(oil_temp_label, LV_ALIGN_CENTER, 0, 40);
-  lv_obj_add_style(oil_temp_label, &style, LV_PART_MAIN);
-
-  oil_pressure_label = lv_label_create(lv_scr_act());
-  lv_obj_set_width(oil_pressure_label, LV_SIZE_CONTENT);
-  lv_label_set_text(oil_pressure_label, "--");
-  lv_obj_align(oil_pressure_label, LV_ALIGN_CENTER, 0, 80);
-  lv_obj_add_style(oil_pressure_label, &style, LV_PART_MAIN);
-
-  egt_label = lv_label_create(lv_scr_act());
-  lv_obj_set_width(egt_label, LV_SIZE_CONTENT);
-  lv_label_set_text(egt_label, "--");
-  lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 120);
-  lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
+  lv_style_set_text_align(&style, LV_TEXT_ALIGN_RIGHT);
 
   // Initialize a style variable
   static lv_style_t transparent;
@@ -168,6 +150,23 @@ void init_ui() {
   lv_obj_align(needle_img, LV_ALIGN_CENTER, 122, -13);
   // Set the pivot to the base of the needle
   lv_image_set_pivot(needle_img, 9, 13);
+  oil_temp_label = lv_label_create(lv_scr_act());
+  lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
+  lv_label_set_text(oil_temp_label, "--");
+  lv_obj_align(oil_temp_label, LV_ALIGN_CENTER, 0, -40);
+  lv_obj_add_style(oil_temp_label, &style, LV_PART_MAIN);
+
+  oil_pressure_label = lv_label_create(lv_scr_act());
+  lv_obj_set_width(oil_pressure_label, LV_SIZE_CONTENT);
+  lv_label_set_text(oil_pressure_label, "--");
+  lv_obj_align(oil_pressure_label, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_add_style(oil_pressure_label, &style, LV_PART_MAIN);
+
+  egt_label = lv_label_create(lv_scr_act());
+  lv_obj_set_width(egt_label, LV_SIZE_CONTENT);
+  lv_label_set_text(egt_label, "--");
+  lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 40);
+  lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
 
 }
 
