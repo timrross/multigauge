@@ -174,6 +174,27 @@ void init_ui() {
   lv_obj_align(needle_img, LV_ALIGN_CENTER, 116, 0);
   // Set the pivot to the base of the needle
   lv_image_set_pivot(needle_img, 3, 10);
+
+  // Create a style for the circle
+  static lv_style_t style_circle;
+  lv_style_init(&style_circle);
+  lv_style_set_radius(&style_circle, LV_RADIUS_CIRCLE); // Make it perfectly round
+  lv_style_set_bg_color(&style_circle, lv_color_black()); // Black 
+  //lv_style_set_bg_opa(&style_circle, LV_OPA_COVER); // solid background
+  lv_style_set_border_color(&style_circle, lv_color_white()); // White border
+  lv_style_set_border_width(&style_circle, 4); // 4px border width
+  lv_style_set_shadow_width(&style_circle, 10); // Shadow width
+  lv_style_set_shadow_color(&style_circle, lv_color_black()); // Black shadow
+  lv_style_set_shadow_spread(&style_circle, 0); // No spread to the shadow
+  lv_style_set_shadow_ofs_x(&style_circle, 0); // X offset of shadow
+  lv_style_set_shadow_ofs_y(&style_circle, 0); // Y offset of shadow
+
+  // Create a container for the circle
+  lv_obj_t * circle = lv_obj_create(lv_screen_active());
+  lv_obj_add_style(circle, &style_circle, 0);
+  lv_obj_set_size(circle, 250, 250); // Set the size of the circle
+  lv_obj_center(circle); // Center the circle on the screen
+
   oil_temp_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
   lv_label_set_text(oil_temp_label, "--");
