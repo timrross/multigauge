@@ -3,6 +3,7 @@
 #include <Adafruit_BME280.h>
 #include <Adafruit_ADS1X15.h>
 #include <Arduino_GFX_Library.h>
+#include <Ewma.h>
 #include <lvgl.h>
 
 #define PSI_BAR_CONVERSION 14.5038
@@ -52,6 +53,12 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
 // Sensors
 Adafruit_MAX31855 thermocouple(SCK, SS, MISO);  // EGT Sensor module
 Adafruit_BME280 bme;                            // atmosphere pressure/temp module
+
+// Set up Exponential Weighted moving average for all the sensor readings.
+Ewma boostFilter(0.1); 
+Ewma oilTempFilter(0.1); 
+Ewma oilPressureFilter(0.1); 
+Ewma egtFilter(0.1);
 
 /* Change to your screen resolution */
 uint32_t screenWidth;
@@ -287,7 +294,8 @@ void readOilSensor() {
 void readBoostPressureSensor() {
   float volts, volts5v, boostPressureSensor;
   // read from analog in on main board.
-  volts = analogRead(BOOST_PRESSURE_PIN) / 4095.0F * 3.4;
+  int raw = analogRead(BOOST_PRESSURE_PIN);
+  volts = boostFilter.filter(raw) / 4095.0F * 3.4;
   // calc what the lower 3.3v signal would be in 5v using voltage divider equation
   volts5v = volts * (5600 + 10000) / 10000.0;
   boostPressureSensor = (BOOST_COEFFICIENT * volts5v + BOOST_INTERCEPT);
@@ -295,7 +303,7 @@ void readBoostPressureSensor() {
 }
 
 void readEGTSensor() {
-  egt = thermocouple.readCelsius();
+  egt = egtFilter.filter(thermocouple.readCelsius());
   if (isnan(egt)) {
     // Serial.println("Thermocouple fault(s) detected!");
     uint8_t e = thermocouple.readError();
