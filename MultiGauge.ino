@@ -6,6 +6,12 @@
 #include <Ewma.h>
 #include <lvgl.h>
 
+#define ENABLE_BOOST_SENSOR true
+#define ENABLE_EGT_SENSOR true
+#define ENABLE_OIL_SENSOR true
+#define ENABLE_ATMOS_SENSOR true
+#define DEBUG false
+
 #define PSI_BAR_CONVERSION 14.5038
 
 // Pins for reading sensors
@@ -426,28 +432,41 @@ void setup() {
     init_ui();
   }
 
-
-
-  // Serial.println("Initializing Atmos Pressure Sensor...");
-  if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
-    // Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
-    while (1) delay(10);
-  }
+  // Set up atmos sensor
+  #if ENABLE_ATMOS_SENSOR
+    // Serial.println("Initializing Atmos Pressure Sensor...");
+    if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
+      // Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
+      while (1) delay(10);
+    }
+  #endif
 
   // Set up EGT thermocouple
-  // Serial.println("Initializing EGT sensor...");
-  if (!thermocouple.begin()) {
-    // Serial.println("ERROR.");
-    while (1) delay(10);
-  }
+  #if ENABLE_EGT_SENSOR
+    // Serial.println("Initializing EGT sensor...");
+    if (!thermocouple.begin()) {
+      // Serial.println("ERROR.");
+      while (1) delay(10);
+    }
+  #endif
 
-  // Wait for sensors
-  // Serial.println("Initializing Boost sensor...");
-  pinMode(BOOST_PRESSURE_PIN, INPUT);
+  // Set up Boost sensor
+  #if ENABLE_INTERCOOLER_SENSOR
+    // Serial.println("Initializing Intercooler sensor...");
+    pinMode(INTERCOOLER_TEMP_PIN, INPUT_PULLDOWN);
+  #endif
 
-  // Serial.println("Initializing oil sensor...");
+  // Set up Boost sensor
+  #if ENABLE_BOOST_SENSOR
+    // Serial.println("Initializing Boost sensor...");
+    pinMode(BOOST_PRESSURE_PIN, INPUT_PULLDOWN);
+  #endif
+
   // Set up oil temp/pressure sensor
-  pinMode(OIL_PRESSURE_PIN, INPUT);
+  #if ENABLE_OIL_SENSOR
+    // Serial.println("Initializing oil sensor...");
+    pinMode(OIL_PRESSURE_PIN, INPUT);
+  #endif
 
   count = 0;
 
@@ -456,54 +475,82 @@ void setup() {
 
 void loop() {
 
-  readAtmosPressureSensor();
-  readIntercoolerTemperatureSensor();
-  readOilSensor();
-  readBoostPressureSensor();
-  readEGTSensor();
+  #if ENABLE_ATMOS_SENSOR
+    readAtmosPressureSensor();
+  #endif
 
+  #if ENABLE_OIL_SENSOR
+    readOilSensor();
+  #endif
+
+  #if ENABLE_BOOST_SENSOR
+    readBoostPressureSensor();
+  #endif
+
+  #if ENABLE_EGT_SENSOR
+    readEGTSensor();
+  #endif
+
+  #if DEBUG
   if (count % 500 == 0) {
-    // Serial.print("Atmos:");
-    // Serial.print(atmos_temp);
-    // Serial.print(" °C ");
-    // Serial.print(atmos_pressure / 100000.0F);
-    // Serial.println(" Bar");
 
-    // Serial.print("intercooler temp:");
-    // Serial.print(intercooler_temp);
-    // Serial.print(" °C; ");
+    #if ENABLE_ATMOS_SENSOR
+      Serial.print("Atmos:");
+      Serial.print(atmos_temp);
+      Serial.print(" °C ");
+      Serial.print(atmos_pressure / 100000.0F);
+      Serial.println(" Bar");
+    #endif
 
-    // Serial.print("Oil temp:");
-    // Serial.print(oil_temp);
-    // Serial.print("°C; ");
 
-    // Serial.print("Oil pressure:");
-    // Serial.print(oil_pressure);
-    // Serial.print(" Bar; ");
+    #if ENABLE_OIL_SENSOR
+      Serial.print("Oil temp:");
+      Serial.print(oil_temp);
+      Serial.print("°C; ");
 
-    // Serial.print("EGT:");
-    // Serial.print(egt);
-    // Serial.print(" °C; ");
-    
-    // Serial.print("Boost:");
-    // Serial.print(boost_pressure);
-    // Serial.print(" psi (");
-    // Serial.print(boost_pressure / PSI_BAR_CONVERSION);
-    // Serial.println(" Bar);");
+      Serial.print("Oil pressure:");
+      Serial.print(oil_pressure);
+      Serial.print(" Bar; ");
+    #endif
+
+    #if ENABLE_EGT_SENSOR 
+      Serial.print("EGT:");
+      Serial.print(egt);
+      Serial.print(" °C; ");
+    #endif
+
+    #if ENABLE_BOOST_SENSOR
+      Serial.print("Boost:");
+      Serial.print(boost_pressure);
+      Serial.print(" psi (");
+      Serial.print(boost_pressure / PSI_BAR_CONVERSION);
+      Serial.print(" Bar);");
+    #endif
+
+    Serial.println();
   }
+  #endif
+
   char buffer[6];
-  set_needle_value((int)(boost_pressure / PSI_BAR_CONVERSION * 1000));
+
+  #if ENABLE_BOOST_SENSOR
+    set_needle_value((int)(boost_pressure / PSI_BAR_CONVERSION * 1000));
+  #endif
   // dtostrf(boost_pressure / PSI_BAR_CONVERSION, 2, 1, buffer);
   // lv_label_set_text(boost_pressure_label, buffer);
   
-  dtostrf(oil_temp,2, 0, buffer);
-  lv_label_set_text(oil_temp_label, buffer);
+  #if ENABLE_OIL_SENSOR
+    dtostrf(oil_temp,2, 0, buffer);
+    lv_label_set_text(oil_temp_label, buffer);
 
-  dtostrf(oil_pressure,2, 1, buffer);
-  lv_label_set_text(oil_pressure_label, buffer);
+    dtostrf(oil_pressure,2, 1, buffer);
+    lv_label_set_text(oil_pressure_label, buffer);
+  #endif
   
+  #if ENABLE_EGT_SENSOR
   dtostrf(egt,2, 0, buffer);
   lv_label_set_text(egt_label,  buffer);
+  #endif
   
 
 
