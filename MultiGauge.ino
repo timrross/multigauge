@@ -212,19 +212,19 @@ void init_ui() {
   oil_temp_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_temp_label, LV_SIZE_CONTENT);
   lv_label_set_text(oil_temp_label, "--");
-  lv_obj_align(oil_temp_label, LV_ALIGN_CENTER, 0, -40);
+  lv_obj_align(oil_temp_label, LV_ALIGN_CENTER, 0, -60);
   lv_obj_add_style(oil_temp_label, &style, LV_PART_MAIN);
 
   oil_pressure_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(oil_pressure_label, LV_SIZE_CONTENT);
   lv_label_set_text(oil_pressure_label, "--");
-  lv_obj_align(oil_pressure_label, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_align(oil_pressure_label, LV_ALIGN_CENTER, 0, -20);
   lv_obj_add_style(oil_pressure_label, &style, LV_PART_MAIN);
 
   egt_label = lv_label_create(lv_scr_act());
   lv_obj_set_width(egt_label, LV_SIZE_CONTENT);
   lv_label_set_text(egt_label, "--");
-  lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 40);
+  lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 20);
   lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
 
   intercooler_label = lv_label_create(lv_scr_act());
