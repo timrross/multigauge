@@ -6,7 +6,11 @@
 #include <Ewma.h>
 #include <lvgl.h>
 
+#define ADC_MAX_VALUE 4095  // Max ADC value for ESP32 12-bit resolution
+#define VREF 3.3
+
 #define ENABLE_BOOST_SENSOR true
+#define ENABLE_INTERCOOLER_SENSOR true
 #define ENABLE_EGT_SENSOR true
 #define ENABLE_OIL_SENSOR true
 #define ENABLE_ATMOS_SENSOR true
@@ -17,6 +21,7 @@
 // Pins for reading sensors
 #define OIL_PRESSURE_PIN MOSI
 #define BOOST_PRESSURE_PIN A0
+#define INTERCOOLER_TEMP_PIN A1
 
 #define STEINHART_A 0.00135721593521515000000
 #define STEINHART_B 0.00024467275139054400000
@@ -66,6 +71,8 @@ Ewma boostFilter(0.1);
 Ewma oilTempFilter(0.1); 
 Ewma oilPressureFilter(0.1); 
 Ewma egtFilter(0.1);
+Ewma intercoolerFilter(0.1);
+
 
 /* Change to your screen resolution */
 uint32_t screenWidth;
@@ -106,6 +113,7 @@ static lv_obj_t * boost_pressure_label;
 static lv_obj_t * oil_temp_label;
 static lv_obj_t * oil_pressure_label;
 static lv_obj_t * egt_label;
+static lv_obj_t * intercooler_label;
 
 void init_ui() {
 
@@ -219,6 +227,12 @@ void init_ui() {
   lv_obj_align(egt_label, LV_ALIGN_CENTER, 0, 40);
   lv_obj_add_style(egt_label, &style, LV_PART_MAIN);
 
+  intercooler_label = lv_label_create(lv_scr_act());
+  lv_obj_set_width(intercooler_label, LV_SIZE_CONTENT);
+  lv_label_set_text(intercooler_label, "--");
+  lv_obj_align(intercooler_label, LV_ALIGN_CENTER, 0, 60);
+  lv_obj_add_style(intercooler_label, &style, LV_PART_MAIN);
+
 }
 
 static void set_needle_value(int32_t v)
@@ -309,23 +323,34 @@ void readAtmosPressureSensor() {
   atmos_pressure = bme.readPressure();
 }
 
+// Function to calculate the resistance of the thermistor using a voltage divider
+float calculate_thermistor_resistance(int adcValue) {
+  if (10 >= adcValue) {
+    // Sensor is not valid and/or Avoid division by zero
+    return -1.0;  // Error value, adjust as needed
+  }
+  float Rt = 10000.0 * (ADC_MAX_VALUE / float(adcValue) - 1.0);
+  return Rt;
+}
+
+// Function to calculate temperature from resistance using Steinhart-Hart equation
+float calculate_thermistor_temperature(float resistance) {
+  // If the resistance is an error, then just return absolute zero so it's
+  // Obvious the reading was not working.
+  if (resistance <= 0) {
+    return -273.15;
+  }
+  float logR = log(resistance);
+  float tempK = 1.0 / (STEINHART_A + STEINHART_B * logR + STEINHART_C * pow(logR, 3));
+  float tempC = tempK - 273.15;  // Convert Kelvin to Celsius
+  return tempC;
+}
+
 // Read th themistor and run the equations.
 void readIntercoolerTemperatureSensor() {
-  double sensor_value = 200;  //analogRead(INTERCOOLER_TEMP_PIN);
-  double resistor = 10000;
-  //convert value to resistance
-  double resistance = (4095 / sensor_value) - 1;
-  resistance = resistor / resistance;
-  float steinhart;                                 //steinhart equation to estimate temperature value at any resistance from curve of thermistor sensor
-  steinhart = log(resistance);                     //lnR
-  steinhart = pow(steinhart, 3);                   //(lnR)^3
-  steinhart *= STEINHART_C;                        //C*((lnR)^3)
-  steinhart += (STEINHART_B * (log(resistance)));  //B*(lnR) + C*((lnR)^3)
-  steinhart += STEINHART_A;                        //Complete equation, 1/T=A+BlnR+C(lnR)^3
-  steinhart = 1.0 / steinhart;                     //Inverse to isolate for T
-  steinhart -= 273.15;                             //Conversion from kelvin to celcius
-
-  intercooler_temp = steinhart;
+  double sensor_value = analogRead(INTERCOOLER_TEMP_PIN);
+  double Rt = calculate_thermistor_resistance(sensor_value);
+  intercooler_temp = intercoolerFilter.filter(calculate_thermistor_temperature(Rt));
 }
 
 void readOilSensor() {
@@ -479,6 +504,10 @@ void loop() {
     readAtmosPressureSensor();
   #endif
 
+  #if ENABLE_INTERCOOLER_SENSOR
+    readIntercoolerTemperatureSensor();
+  #endif
+
   #if ENABLE_OIL_SENSOR
     readOilSensor();
   #endif
@@ -502,6 +531,11 @@ void loop() {
       Serial.println(" Bar");
     #endif
 
+    #if ENABLE_INTERCOOLER_SENSOR
+      Serial.print("intercooler temp:");
+      Serial.print(intercooler_temp);
+      Serial.print(" °C; ");
+    #endif
 
     #if ENABLE_OIL_SENSOR
       Serial.print("Oil temp:");
@@ -552,6 +586,10 @@ void loop() {
   lv_label_set_text(egt_label,  buffer);
   #endif
   
+  #if ENABLE_INTERCOOLER_SENSOR
+    dtostrf(intercooler_temp,2, 0, buffer);
+    lv_label_set_text(intercooler_label,  buffer);
+  #endif
 
 
   lv_task_handler(); /* let the GUI do its work */
