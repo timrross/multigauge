@@ -19,10 +19,10 @@
 #define BOOST_COEFFICIENT 12.864
 #define BOOST_INTERCEPT -12.877
 
-#define PSI_BAR_CONVERSION 14.5038
-
 void initSensors();
 void readSensors();
+
+extern int count;
 
 extern double easingFactor;
 

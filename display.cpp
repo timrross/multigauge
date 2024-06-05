@@ -1,7 +1,6 @@
 #include <Arduino_GFX_Library.h>
 #include <lvgl.h>
 #include "display.h"
-#include "ui.h"
 
 Arduino_XCA9554SWSPI *expander = new Arduino_XCA9554SWSPI(
   PCA_TFT_RESET, PCA_TFT_CS, PCA_TFT_SCK, PCA_TFT_MOSI,

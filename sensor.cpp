@@ -2,11 +2,14 @@
 #include <Adafruit_MAX31855.h>
 #include <Adafruit_BME280.h>
 #include <Ewma.h>
+#include "constants.h"
 #include "sensor.h"
 
 // Sensors
 Adafruit_MAX31855 thermocouple(SCK, SS, MISO);  // EGT Sensor module
 Adafruit_BME280 bme;                            // atmosphere pressure/temp module
+
+int count = 0;
 
 double easingFactor = 0.1;
 
@@ -227,30 +230,30 @@ void readSensors() {
     readEGTSensor();
   #endif
 
-    #if DEBUG
-  if (count % 500 == 0) {
+  #if DEBUG
+  if (count % 100 == 0) {
 
     #if ENABLE_ATMOS_SENSOR
       Serial.print("Atmos:");
-      Serial.print(atmos_temp);
+      Serial.print(atmosTemp);
       Serial.print(" °C ");
-      Serial.print(atmos_pressure / 100000.0F);
+      Serial.print(atmosPressure / 100000.0F);
       Serial.println(" Bar");
     #endif
 
     #if ENABLE_INTERCOOLER_SENSOR
       Serial.print("intercooler temp:");
-      Serial.print(intercooler_temp);
+      Serial.print(intercoolerTemp);
       Serial.print(" °C; ");
     #endif
 
     #if ENABLE_OIL_SENSOR
       Serial.print("Oil temp:");
-      Serial.print(oil_temp);
+      Serial.print(oilTemp);
       Serial.print("°C; ");
 
       Serial.print("Oil pressure:");
-      Serial.print(oil_pressure);
+      Serial.print(oilPressure);
       Serial.print(" Bar; ");
     #endif
 
@@ -262,9 +265,9 @@ void readSensors() {
 
     #if ENABLE_BOOST_SENSOR
       Serial.print("Boost:");
-      Serial.print(boost_pressure);
+      Serial.print(boostPressure);
       Serial.print(" psi (");
-      Serial.print(boost_pressure / PSI_BAR_CONVERSION);
+      Serial.print(boostPressure / PSI_BAR_CONVERSION);
       Serial.print(" Bar);");
     #endif
 

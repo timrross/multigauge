@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <lvgl.h>
+#include "constants.h"
 #include "display.h"
+#include "sensor.h"
 #include "ui.h"
 
 LV_IMG_DECLARE(gauge_bg);
@@ -164,8 +166,8 @@ void initUI() {
   lv_obj_set_style_pad_all(grid, 0, LV_PART_MAIN);
 
   // Create sensor widgets
-  createSensorWidget(grid, "Oil Press.", &oilTempLabel, "bar", 0, 0);
-  createSensorWidget(grid, "Oil Temp.", &oilPressureLabel, "°C", 1, 0);
+  createSensorWidget(grid, "Oil Press.", &oilPressureLabel, "bar", 0, 0);
+  createSensorWidget(grid, "Oil Temp.", &oilTempLabel, "°C", 1, 0);
   createSensorWidget(grid, "EGT", &egtLabel, "°C", 0, 1);
   createSensorWidget(grid, "Intake", &intercoolerLabel, "°C", 1, 1);
 
