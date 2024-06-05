@@ -146,7 +146,7 @@ void initUI() {
   // Create a container for the circle
   lv_obj_t * circle = lv_obj_create(lv_screen_active());
   lv_obj_add_style(circle, &style_circle, 0);
-  lv_obj_set_size(circle, 250, 250); // Set the size of the circle
+  lv_obj_set_size(circle, 280, 280); // Set the size of the circle
   lv_obj_center(circle); // Center the circle on the screen
 
 // Create a 2x2 grid
