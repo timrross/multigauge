@@ -8,7 +8,7 @@
 Adafruit_MAX31855 thermocouple(SCK, SS, MISO);  // EGT Sensor module
 Adafruit_BME280 bme;                            // atmosphere pressure/temp module
 
-double easingFactor;
+double easingFactor = 0.1;
 
 /* vars for oil sensor */
 volatile double oilTemp = 0.0;
