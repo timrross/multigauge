@@ -19,7 +19,7 @@ void loop() {
   readSensors();
   updateUI();
   flushDisplay();
-  Serial.println(count);
+
   count++;
   delay(5);
 }

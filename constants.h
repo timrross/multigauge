@@ -1,7 +1,7 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-#define DEBUG true
+#define DEBUG false
 
 #define ENABLE_BOOST_SENSOR true
 #define ENABLE_INTERCOOLER_SENSOR false

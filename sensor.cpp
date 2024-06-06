@@ -32,7 +32,7 @@ double atmosTemp = 0.0;
 double atmosPressure = 0.0;
 
 // Set up Exponential Weighted moving average for all the sensor readings.
-Ewma boostFilter(easingFactor); 
+Ewma boostFilter(easingFactor * 2); // Make the boost needle move a bit faster. 
 Ewma oilTempFilter(easingFactor); 
 Ewma oilPressureFilter(easingFactor); 
 Ewma egtFilter(easingFactor);
@@ -185,12 +185,11 @@ void readOilSensor() {
  */
 void readBoostPressureSensor() {
   double r1, r2, volts, volts5v, boostPressureSensor;
-  // voltage divider resistors
-  r1 = 5600;
-  r2 = 10000;
+  r1 = 5600.0;
+  r2 = 10000.0;
   // read from analog in on main board.
   int raw = analogRead(BOOST_PRESSURE_PIN);
-  volts = raw / ADC_MAX_VALUE * VREF;
+  volts = raw / 4095.0F * 3.4;
   // calc what the lower 3.3v signal would be in 5v using voltage divider equation
   volts5v = volts * (r1 + r2) / r2;
   boostPressureSensor = (BOOST_COEFFICIENT * volts5v + BOOST_INTERCEPT);

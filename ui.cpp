@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <math.h>
 #include <lvgl.h>
 #include "constants.h"
 #include "display.h"
@@ -12,13 +13,18 @@ LV_IMG_DECLARE(needle);
 lv_obj_t * activeBoost;
 lv_obj_t * boostGauge;
 lv_obj_t * needleImg;
-lv_obj_t * boostPressureLabel;
 lv_obj_t * oilTempLabel;
 lv_obj_t * oilPressureLabel;
 lv_obj_t * egtLabel;
 lv_obj_t * intercoolerLabel;
+lv_obj_t * oilTempUnit;
+lv_obj_t * oilPressureUnit;
+lv_obj_t * egtUnit;
+lv_obj_t * intercoolerUnit;
+lv_obj_t *fps_label;
 
-void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valueLabel, const char *unitText, int col, int row)
+
+void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valueLabel, lv_obj_t **unitLabel, const char *unitText, int col, int row)
 {
   // Create styles
   static lv_style_t style_label;
@@ -53,12 +59,42 @@ void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valu
   lv_obj_add_style(label, &style_label, 0);
   lv_obj_align_to(label, *valueLabel, LV_ALIGN_OUT_TOP_LEFT, 0, 0); // Align label to the top left
 
-  lv_obj_t *unit = lv_label_create(container);
-  lv_label_set_text(unit, unitText);
-  lv_obj_add_style(unit, &style_units, 0);
-  lv_obj_align_to(unit, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the bottom left
+  *unitLabel = lv_label_create(container);
+  lv_label_set_text(*unitLabel, unitText);
+  lv_obj_add_style(*unitLabel, &style_units, 0);
+  lv_obj_align_to(*unitLabel, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the bottom left
 }
 
+void create_fps_label() {
+
+  static lv_style_t style_label;
+  lv_style_init(&style_label);
+  lv_style_set_text_color(&style_label, lv_color_darken(lv_color_white(), 64));
+  lv_style_set_text_font(&style_label, &lv_font_montserrat_14);
+
+  fps_label = lv_label_create(lv_scr_act());
+  lv_label_set_text(fps_label, "FPS: 0");
+  lv_obj_add_style(fps_label, &style_label, LV_PART_MAIN);
+  lv_obj_align(fps_label, LV_ALIGN_CENTER, 0, 100); // Adjust position as needed
+}
+
+void update_fps_label(lv_timer_t * timer) {
+    static uint32_t last_time = 0;
+    static uint32_t frame_count = 0;
+
+    frame_count++;
+    uint32_t current_time = millis();
+
+    if (current_time - last_time >= 1000) { // Update every second
+        uint32_t fps = frame_count;
+        frame_count = 0;
+        last_time = current_time;
+
+        char fps_text[16];
+        snprintf(fps_text, sizeof(fps_text), "FPS: %u", fps);
+        lv_label_set_text(fps_label, fps_text);
+    }
+}
 
 void initUI() {
 
@@ -70,22 +106,6 @@ void initUI() {
   /*From variable*/
   lv_image_set_src(background, &gauge_bg);
   lv_obj_set_size(background, 480, 480);
-
-  static lv_style_t style;
-  lv_style_init(&style);
-  lv_style_set_bg_color(&style, lv_color_black());
-  lv_style_set_border_width(&style, 0);
-  lv_style_set_text_color(&style, lv_color_white());
-  lv_style_set_text_letter_space(&style, 5);
-  lv_style_set_text_line_space(&style, 20);
-  lv_style_set_text_font(&style, &lv_font_montserrat_34);
-  lv_style_set_text_align(&style, LV_TEXT_ALIGN_RIGHT);
-
-  // Initialize a style variable
-  static lv_style_t transparent;
-  lv_style_init(&transparent);
-  // Set the background opacity to transparent
-  lv_style_set_opa(&transparent, LV_OPA_TRANSP);
 
   /*Create an Arc*/
   activeBoost = lv_arc_create(lv_screen_active());
@@ -111,20 +131,7 @@ void initUI() {
   lv_obj_set_style_arc_width(activeBoost, 0, LV_PART_MAIN);
   lv_obj_remove_style(activeBoost, NULL, LV_PART_KNOB); // Remove the knob
 
-  /* Add a scale just for the nice needle */
-  boostGauge = lv_scale_create(lv_screen_active());
-  lv_obj_set_size(boostGauge, 480, 480);
-  lv_scale_set_mode(boostGauge, LV_SCALE_MODE_ROUND_INNER);
-  lv_obj_center(boostGauge);
-  // Apply the style to the object
-  lv_obj_add_style(boostGauge, &transparent, LV_PART_ITEMS);
-  lv_obj_add_style(boostGauge, &transparent, LV_PART_INDICATOR);
-  lv_scale_set_range(boostGauge, 0, 2000);
-
-  lv_scale_set_angle_range(boostGauge, 270);
-  lv_scale_set_rotation(boostGauge, 135);
-
-  needleImg = lv_image_create(boostGauge);
+  needleImg = lv_image_create(activeBoost);
   lv_image_set_src(needleImg, &needle);
   // As it's aligned to center, need to set the x y to half the width/height of the needle image.
   lv_obj_align(needleImg, LV_ALIGN_CENTER, 116, 0);
@@ -136,7 +143,6 @@ void initUI() {
   lv_style_init(&style_circle);
   lv_style_set_radius(&style_circle, LV_RADIUS_CIRCLE); // Make it perfectly round
   lv_style_set_bg_color(&style_circle, lv_color_black()); // Black 
-  //lv_style_set_bg_opa(&style_circle, LV_OPA_COVER); // solid background
   lv_style_set_border_color(&style_circle, lv_color_white()); // White border
   lv_style_set_border_width(&style_circle, 4); // 4px border width
   lv_style_set_shadow_width(&style_circle, 10); // Shadow width
@@ -166,40 +172,50 @@ void initUI() {
   lv_obj_set_style_pad_all(grid, 0, LV_PART_MAIN);
 
   // Create sensor widgets
-  createSensorWidget(grid, "Oil Press.", &oilPressureLabel, "bar", 0, 0);
-  createSensorWidget(grid, "Oil Temp.", &oilTempLabel, "°C", 1, 0);
-  createSensorWidget(grid, "EGT", &egtLabel, "°C", 0, 1);
-  createSensorWidget(grid, "Intake", &intercoolerLabel, "°C", 1, 1);
+  createSensorWidget(grid, "Oil Press.", &oilPressureLabel, &oilPressureUnit, "bar", 0, 0);
+  createSensorWidget(grid, "Oil Temp.", &oilTempLabel, &oilTempUnit, "°C", 1, 0);
+  createSensorWidget(grid, "EGT", &egtLabel, &egtUnit, "°C", 0, 1);
+  createSensorWidget(grid, "Intake", &intercoolerLabel, &intercoolerUnit, "°C", 1, 1);
+
+  create_fps_label();
+
+  // Create a timer to update the FPS label
+  lv_timer_create(update_fps_label, 10, NULL); // Update every second
 
 }
 
 void setNeedleValue(int32_t v)
 {
-  lv_arc_set_value(activeBoost, v);
-  lv_scale_set_image_needle_value(boostGauge, needleImg, v);
+    int bar = (int)(boostPressure / PSI_BAR_CONVERSION * 1000);
+    lv_arc_set_value(activeBoost, bar);
+    int angle = 135 + max((bar * 270.0) / 2000.0, 0.0); // Convert value to angle (0-270) and offset by 135 to match the scale background
+    lv_img_set_angle(needleImg, angle * 10);// Set the angle (LVGL angle is in 1/10 degree units)
 }
 
-void setLabelValue(lv_obj_t *label, double value, int width, unsigned int decimalPlaces) {
-    char buffer[16];
-    snprintf(buffer, sizeof(buffer), "%.1f", value);
-    lv_label_set_text(label, buffer);
+void setLabelValue(lv_obj_t **valueLabel, lv_obj_t **unitLabel, double value, unsigned int decimalPlaces) {
+  char format[10];
+  snprintf(format, sizeof(format), "%%.%df", decimalPlaces);
+  char buffer[16];
+  snprintf(buffer, sizeof(buffer), format, value);
+  lv_label_set_text(*valueLabel, buffer);
+  lv_obj_align_to(*unitLabel, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the bottom left
 }
 
 void updateUI() {
   #if ENABLE_BOOST_SENSOR
-    setNeedleValue((int)(boostPressure / PSI_BAR_CONVERSION * 1000));
+    setNeedleValue(boostPressure);
   #endif
   
   #if ENABLE_OIL_SENSOR
-    setLabelValue(oilTempLabel, oilTemp, 3, 0);
-    setLabelValue(oilPressureLabel, oilPressure, 2, 1);
+    setLabelValue(&oilTempLabel, &oilTempUnit, oilTemp, 0);
+    setLabelValue(&oilPressureLabel, &oilPressureUnit, oilPressure, 1);
   #endif
   
   #if ENABLE_EGT_SENSOR
-    setLabelValue(egtLabel, egt, 3, 0);
+    setLabelValue(&egtLabel, &egtUnit, egt, 0);
   #endif
   
   #if ENABLE_INTERCOOLER_SENSOR
-    setLabelValue(intercoolerLabel, intercoolerTemp, 2, 0);
+    setLabelValue(&intercoolerLabel, &intercoolerUnit, intercoolerTemp, 0);
   #endif
 }
