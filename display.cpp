@@ -66,7 +66,9 @@ void initDisplay() {
     pinMode(GFX_BL, OUTPUT);
     digitalWrite(GFX_BL, HIGH);
   #endif
+}
 
+void initLVGL() {
   lv_init();
 
   /*Set a tick source so that LVGL will know how much time elapsed. */
@@ -111,16 +113,10 @@ void initDisplay() {
         lv_display_set_buffers(disp, disp_draw_buf, NULL, bufSize * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);
     #endif
   }
-}
 
-void flushDisplay() {
-  lv_task_handler(); /* let the GUI do its work */
+  // lv_display_t *disp = lv_display_create(TFT_HOR_RES, TFT_VER_RES);
+  // draw_buf_1 = heap_caps_malloc(DRAW_BUF_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
 
-  #ifdef DIRECT_MODE
-    #ifdef RGB_PANEL
-      gfx->flush();
-    #else
-      gfx->draw16bitRGBBitmap(0, 0, (uint16_t *)draw_buf, screenWidth, screenHeight);
-    #endif
-  #endif  // #ifdef DIRECT_MODE
+  // lv_display_set_flush_cb(disp, my_disp_flush);
+  // lv_display_set_buffers(disp, disp_draw_buf, NULL, bufSize * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);
 }

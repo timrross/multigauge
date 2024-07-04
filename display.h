@@ -9,6 +9,6 @@
 #define DRAW_BUF_SIZE (TFT_HOR_RES * TFT_VER_RES / 10 * (LV_COLOR_DEPTH / 8))
 
 void initDisplay();
-void flushDisplay();
+void initLVGL();
 
 #endif // DISPLAY_H
