@@ -11,28 +11,15 @@ Adafruit_BME280 bme;                            // atmosphere pressure/temp modu
 
 int count = 0;
 
-double easingFactor = 0.1;
+double easingFactor = 0.05;
 
 /* vars for oil sensor */
-volatile double oilTemp = 0.0;
+volatile double oilTemperature = 0.0;
 volatile double oilPressure = 0.0;
-volatile byte oilSensorStatus = 0;
-
-/* Vars for boost pressure */
-double boostPressure = 0.0;
-
-/* vars for EGT */
-double egt = 0.0;
-
-/* vars for intercooler Temp */
-double intercoolerTemp = 0.0;
-
-/* vars for atmos sensor */
-double atmosTemp = 0.0;
-double atmosPressure = 0.0;
+volatile double oilSensorStatus = 0;
 
 // Set up Exponential Weighted moving average for all the sensor readings.
-Ewma boostFilter(easingFactor * 2); // Make the boost needle move a bit faster. 
+Ewma boostFilter(easingFactor); // Make the boost needle move a bit faster. 
 Ewma oilTempFilter(easingFactor); 
 Ewma oilPressureFilter(easingFactor); 
 Ewma egtFilter(easingFactor);
@@ -117,7 +104,7 @@ void IRAM_ATTR oilSensorPWMInterrupt() {
       }
     }
     else if (lastPulse == DIAGNOSTIC) {
-      oilTemp = ((4096.0 / pulseDuration) * inputDuration - 128) / 19.2 - 40;
+      oilTemperature = ((4096.0 / pulseDuration) * inputDuration - 128) / 19.2 - 40;
       lastPulse = TEMPERATURE;
     }
     else if (lastPulse == TEMPERATURE) {
@@ -134,9 +121,12 @@ void IRAM_ATTR oilSensorPWMInterrupt() {
   }
 }
 
-void readAtmosPressureSensor() {
-  atmosTemp = bme.readTemperature();
-  atmosPressure = bme.readPressure();
+float readAtmosPressureSensor() {
+  return bme.readPressure();
+}
+
+float readAtmosTemperatureSensor() {
+  return bme.readTemperature();
 }
 
 // Function to calculate the resistance of the thermistor using a voltage divider
@@ -163,19 +153,25 @@ float calculate_thermistor_temperature(float resistance) {
 }
 
 // Read th themistor and run the equations.
-void readIntercoolerTemperatureSensor() {
+double readIntercoolerTemperatureSensor() {
   double sensor_value = analogRead(INTERCOOLER_TEMP_PIN);
   double Rt = calculate_thermistor_resistance(sensor_value);
-  intercoolerTemp = intercoolerFilter.filter(calculate_thermistor_temperature(Rt));
+  return intercoolerFilter.filter(calculate_thermistor_temperature(Rt));
 }
 
-void readOilSensor() {
+OilStatusData readOilSensor() {
+  OilStatusData status;
   lastPulse = UNKNOWN;
   sequenceComplete = false;
   attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
   // Stay here until the sequence is complete.
   while(!sequenceComplete);
   detachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN));
+  // Set the status struct, and return it. 
+  status.oilPressure = oilPressure;
+  status.oilTemperature = oilTemperature;
+  status.oilSensorStatus = oilSensorStatus;
+  return status;
 }
 
 /**
@@ -183,7 +179,7 @@ void readOilSensor() {
  * pressure = BOOST_COEFFICIENT x voltage - BOOST_INTERCEPT
  * I used excel to calculate the equation using linear regression on the datasheet provided.
  */
-void readBoostPressureSensor() {
+double readBoostPressureSensor() {
   double r1, r2, volts, volts5v, boostPressureSensor;
   r1 = 5600.0;
   r2 = 10000.0;
@@ -193,11 +189,11 @@ void readBoostPressureSensor() {
   // calc what the lower 3.3v signal would be in 5v using voltage divider equation
   volts5v = volts * (r1 + r2) / r2;
   boostPressureSensor = (BOOST_COEFFICIENT * volts5v + BOOST_INTERCEPT);
-  boostPressure = boostFilter.filter(boostPressureSensor);
+  return boostFilter.filter(boostPressureSensor);
 }
 
-void readEGTSensor() {
-  egt = egtFilter.filter(thermocouple.readCelsius());
+double readEgtSensor() {
+  double egt = thermocouple.readCelsius();
   if (isnan(egt)) {
     // Serial.println("Thermocouple fault(s) detected!");
     uint8_t e = thermocouple.readError();
@@ -205,12 +201,14 @@ void readEGTSensor() {
     // if (e & MAX31855_FAULT_SHORT_GND) // Serial.println("FAULT: Thermocouple is short-circuited to GND.");
     // if (e & MAX31855_FAULT_SHORT_VCC) // Serial.println("FAULT: Thermocouple is short-circuited to VCC.");
   }
+  return egtFilter.filter(egt);
 }
 
 void readSensors() {
 
   #if ENABLE_ATMOS_SENSOR
     readAtmosPressureSensor();
+    readAtmosTemperatureSensor();
   #endif
 
   #if ENABLE_INTERCOOLER_SENSOR
@@ -226,51 +224,51 @@ void readSensors() {
   #endif
 
   #if ENABLE_EGT_SENSOR
-    readEGTSensor();
+    readEgtSensor();
   #endif
 
   #if DEBUG
-  if (count % 100 == 0) {
+  // if (count % 100 == 0) {
 
-    #if ENABLE_ATMOS_SENSOR
-      Serial.print("Atmos:");
-      Serial.print(atmosTemp);
-      Serial.print(" °C ");
-      Serial.print(atmosPressure / 100000.0F);
-      Serial.println(" Bar");
-    #endif
+  //   #if ENABLE_ATMOS_SENSOR
+  //     Serial.print("Atmos:");
+  //     Serial.print(atmosTemp);
+  //     Serial.print(" °C ");
+  //     Serial.print(atmosPressure / 100000.0F);
+  //     Serial.println(" Bar");
+  //   #endif
 
-    #if ENABLE_INTERCOOLER_SENSOR
-      Serial.print("intercooler temp:");
-      Serial.print(intercoolerTemp);
-      Serial.print(" °C; ");
-    #endif
+  //   #if ENABLE_INTERCOOLER_SENSOR
+  //     Serial.print("intercooler temp:");
+  //     Serial.print(intercoolerTemp);
+  //     Serial.print(" °C; ");
+  //   #endif
 
-    #if ENABLE_OIL_SENSOR
-      Serial.print("Oil temp:");
-      Serial.print(oilTemp);
-      Serial.print("°C; ");
+  //   #if ENABLE_OIL_SENSOR
+  //     Serial.print("Oil temp:");
+  //     Serial.print(oilTemp);
+  //     Serial.print("°C; ");
 
-      Serial.print("Oil pressure:");
-      Serial.print(oilPressure);
-      Serial.print(" Bar; ");
-    #endif
+  //     Serial.print("Oil pressure:");
+  //     Serial.print(oilPressure);
+  //     Serial.print(" Bar; ");
+  //   #endif
 
-    #if ENABLE_EGT_SENSOR 
-      Serial.print("EGT:");
-      Serial.print(egt);
-      Serial.print(" °C; ");
-    #endif
+  //   #if ENABLE_EGT_SENSOR 
+  //     Serial.print("EGT:");
+  //     Serial.print(egt);
+  //     Serial.print(" °C; ");
+  //   #endif
 
-    #if ENABLE_BOOST_SENSOR
-      Serial.print("Boost:");
-      Serial.print(boostPressure);
-      Serial.print(" psi (");
-      Serial.print(boostPressure / PSI_BAR_CONVERSION);
-      Serial.print(" Bar);");
-    #endif
+  //   #if ENABLE_BOOST_SENSOR
+  //     Serial.print("Boost:");
+  //     Serial.print(boostPressure);
+  //     Serial.print(" psi (");
+  //     Serial.print(boostPressure / PSI_BAR_CONVERSION);
+  //     Serial.print(" Bar);");
+  //   #endif
 
-    Serial.println();
-  }
+  //   Serial.println();
+  // }
   #endif
 }

@@ -19,29 +19,23 @@
 #define BOOST_COEFFICIENT 12.864
 #define BOOST_INTERCEPT -12.877
 
-void initSensors();
-void readSensors();
-
 extern int count;
 
 extern double easingFactor;
 
-/* vars for oil sensor */
-extern volatile double oilTemp;
-extern volatile double oilPressure;
-extern volatile byte oilSensorStatus;
+typedef struct {
+  double oilTemperature;
+  double oilPressure;
+  byte oilSensorStatus;
+} OilStatusData;
 
-/* Vars for boost pressure */
-extern double boostPressure;
+void initSensors();
+OilStatusData readOilSensor();
+double readBoostPressureSensor();
+double readEgtSensor();
+float readAtmosPressureSensor();
+float readAtmosTemperatureSensor();
+double readIntercoolerTemperatureSensor();
 
-/* vars for EGT */
-extern double egt;
-
-/* vars for intercooler Temp */
-extern double intercoolerTemp;
-
-/* vars for atmos sensor */
-extern double atmosTemp;
-extern double atmosPressure;
 
 #endif

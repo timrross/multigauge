@@ -23,6 +23,16 @@ lv_obj_t * egtUnit;
 lv_obj_t * intercoolerUnit;
 lv_obj_t *fps_label;
 
+// Keep current values of all the sensors as strings, 
+// So when a new sensor reading is set, it only updates the display if 
+// its different to last time.
+int boostPressure;
+String oilPressureValue;
+String oilTemperatureValue;
+String egtValue;
+String intercoolerTemperatureValue;
+
+int _needle_angle;
 
 void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valueLabel, lv_obj_t **unitLabel, const char *unitText, int col, int row)
 {
@@ -137,6 +147,7 @@ void initUI() {
   lv_obj_align(needleImg, LV_ALIGN_CENTER, 116, 0);
   // Set the pivot to the base of the needle
   lv_image_set_pivot(needleImg, 3, 10);
+  lv_image_set_rotation(needleImg, 1350);
 
   // Create a style for the circle
   static lv_style_t style_circle;
@@ -184,38 +195,107 @@ void initUI() {
 
 }
 
-void setNeedleValue(int32_t v)
-{
-    int bar = (int)(boostPressure / PSI_BAR_CONVERSION * 1000);
-    lv_arc_set_value(activeBoost, bar);
-    int angle = 135 + max((bar * 270.0) / 2000.0, 0.0); // Convert value to angle (0-270) and offset by 135 to match the scale background
-    lv_img_set_angle(needleImg, angle * 10);// Set the angle (LVGL angle is in 1/10 degree units)
+static void anim_rotate_cb(void *var, int32_t v) {
+  lv_image_set_rotation((lv_obj_t *)var, v);
 }
 
-void setLabelValue(lv_obj_t **valueLabel, lv_obj_t **unitLabel, double value, unsigned int decimalPlaces) {
+void setBoostPressure(double value)
+{
+    if (needleImg == NULL) return;
+    
+    int mbar = (int)(value / PSI_BAR_CONVERSION * 1000);
+    if (mbar < 0) mbar = 0;
+    if (mbar > 2000) mbar = 2000;
+    if (boostPressure != mbar) {
+
+      lv_arc_set_value(activeBoost, mbar);
+      int needle_angle = (1350 + (int)((mbar * 2700.0) / 2000.0)); // Convert value to angle (0-270) and offset by 135 to match the scale background
+      //Serial.println(needle_angle);
+      lv_image_set_rotation(needleImg, needle_angle);// Set the angle (LVGL angle is in 1/10 degree units)
+
+      //int arrow_angle = 3600 - map(voc, 0, 150, 0, 1800);
+      // lv_anim_t anim_rotate_img;
+      // lv_anim_init(&anim_rotate_img);
+      // lv_anim_set_var(&anim_rotate_img, needleImg);
+      // lv_anim_set_exec_cb(&anim_rotate_img, anim_rotate_cb);
+      // lv_anim_set_duration(&anim_rotate_img, 25);
+      // lv_anim_set_values(&anim_rotate_img, _needle_angle, needle_angle);
+      // lv_anim_start(&anim_rotate_img);
+      // _needle_angle = needle_angle;
+    }
+}
+
+String formatValue(double value, unsigned int decimalPlaces) {
   char format[10];
   snprintf(format, sizeof(format), "%%.%df", decimalPlaces);
   char buffer[16];
   snprintf(buffer, sizeof(buffer), format, value);
-  lv_label_set_text(*valueLabel, buffer);
+  return String(buffer);
+}
+
+void setLabelValue(lv_obj_t **valueLabel, lv_obj_t **unitLabel, String value) {
+  if (valueLabel == NULL || unitLabel == NULL) return;
+  // char charArray[20];
+  // value.toCharArray(charArray, sizeof(charArray));
+  lv_label_set_text(*valueLabel, value.c_str());
   lv_obj_align_to(*unitLabel, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the bottom left
 }
 
-void updateUI() {
-  #if ENABLE_BOOST_SENSOR
-    setNeedleValue(boostPressure);
+void setOilTemperature(double value) {
+    #if ENABLE_OIL_SENSOR
+    if (!isnan(value)) {
+      if (oilTempLabel == NULL || oilTempUnit == NULL) return;
+      String newOilTemperatureValue = formatValue(value, 0);
+      if (oilTemperatureValue != newOilTemperatureValue) {
+        setLabelValue(&oilTempLabel, &oilTempUnit, newOilTemperatureValue);
+        oilTemperatureValue = newOilTemperatureValue;
+      }
+    }
   #endif
-  
+}
+
+void setOilPressure(double value) {
   #if ENABLE_OIL_SENSOR
-    setLabelValue(&oilTempLabel, &oilTempUnit, oilTemp, 0);
-    setLabelValue(&oilPressureLabel, &oilPressureUnit, oilPressure, 1);
+    if (!isnan(value)) {           
+      if (oilPressureLabel == NULL || oilPressureUnit == NULL) return;
+      String newOilPressureValue = formatValue(value, 1);
+      if (oilPressureValue != newOilPressureValue) {
+        setLabelValue(&oilPressureLabel, &oilPressureUnit, newOilPressureValue);
+        oilPressureValue = newOilPressureValue;
+      }
+    }
   #endif
-  
+}
+
+void setEgt(double value) {
   #if ENABLE_EGT_SENSOR
-    setLabelValue(&egtLabel, &egtUnit, egt, 0);
+    if (!isnan(value)) {
+      if (egtLabel == NULL || egtUnit == NULL) return;
+      String newEgtValue = formatValue(value, 0);
+      if (egtValue != newEgtValue) {
+        setLabelValue(&egtLabel, &egtUnit, newEgtValue);
+        egtValue = newEgtValue;
+      }
+    }
   #endif
-  
+}
+
+void setIntercoolerTemperature(double value) {
   #if ENABLE_INTERCOOLER_SENSOR
-    setLabelValue(&intercoolerLabel, &intercoolerUnit, intercoolerTemp, 0);
+    if (!isnan(value)) {
+      if (intercoolerLabel == NULL || intercoolerUnit == NULL) return;
+      String newIntercoolerTemperatureValue = formatValue(value, 0);
+      if (intercoolerTemperatureValue != newIntercoolerTemperatureValue) {
+        setLabelValue(&intercoolerLabel, &intercoolerUnit, newIntercoolerTemperatureValue);
+        intercoolerTemperatureValue = newIntercoolerTemperatureValue;
+      } 
+    }
   #endif
+}
+
+void updateUI(SensorData data) {
+            
+
+  
+
 }
