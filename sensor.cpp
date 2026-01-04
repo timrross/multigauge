@@ -2,6 +2,9 @@
 #include <Adafruit_MAX31855.h>
 #include <Adafruit_BME280.h>
 #include <Ewma.h>
+#if defined(ESP32)
+#include "soc/gpio_struct.h"
+#endif
 #include "constants.h"
 #include "sensor.h"
 
@@ -79,7 +82,11 @@ volatile long startTime = 0;
 
 // PWM reading from oil temp/pressure sensor
 void IRAM_ATTR oilSensorPWMInterrupt() {
+#if defined(ESP32)
   bool pinState = (GPIO.in & (1ULL << OIL_PRESSURE_PIN)) != 0;
+#else
+  bool pinState = digitalRead(OIL_PRESSURE_PIN) == HIGH;
+#endif
   unsigned long currentTime = micros();
   if (pinState) {
     // Start of rising edge of next pulse.
