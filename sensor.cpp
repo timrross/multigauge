@@ -163,14 +163,31 @@ OilStatusData readOilSensor() {
   OilStatusData status;
   lastPulse = UNKNOWN;
   sequenceComplete = false;
+  oilSensorStatus = 0;
+  pulseDuration = 0;
+  inputDuration = 0;
+  startTime = micros();
   attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
   // Stay here until the sequence is complete.
-  while(!sequenceComplete);
+  const uint32_t timeout_us = 100000;
+  uint32_t start_wait = micros();
+  while(!sequenceComplete) {
+    if ((uint32_t)(micros() - start_wait) > timeout_us) {
+      break;
+    }
+    delay(1);
+  }
   detachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN));
   // Set the status struct, and return it. 
-  status.oilPressure = oilPressure;
-  status.oilTemperature = oilTemperature;
-  status.oilSensorStatus = oilSensorStatus;
+  if (!sequenceComplete) {
+    status.oilPressure = NAN;
+    status.oilTemperature = NAN;
+    status.oilSensorStatus = 0;
+  } else {
+    status.oilPressure = oilPressure;
+    status.oilTemperature = oilTemperature;
+    status.oilSensorStatus = oilSensorStatus;
+  }
   return status;
 }
 

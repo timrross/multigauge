@@ -127,7 +127,7 @@ void Task_Read_Sensors(void *pvParameters) {
     // Read Sensors
       #if ENABLE_ATMOS_SENSOR
         data.atmosPressure = readAtmosPressureSensor();
-        data.atmosTemperature = readAtmosPressure();
+        data.atmosTemperature = readAtmosTemperatureSensor();
       #endif
 
       #if ENABLE_INTERCOOLER_SENSOR

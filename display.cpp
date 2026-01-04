@@ -85,7 +85,7 @@ void initLVGL() {
   #ifdef DIRECT_MODE
     bufSize = screenWidth * screenHeight;
   #else
-    bufSize = screenWidth * 40;
+    bufSize = screenWidth * 80;
   #endif
 
   #ifdef ESP32
@@ -96,6 +96,13 @@ void initLVGL() {
       if (!disp_draw_buf) {
         // remove MALLOC_CAP_INTERNAL flag try again
         disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * 2, MALLOC_CAP_8BIT);
+      }
+      if (!disp_draw_buf) {
+        bufSize = screenWidth * 40;
+        disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!disp_draw_buf) {
+          disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * 2, MALLOC_CAP_8BIT);
+        }
       }
     #endif  // !DIRECT_MODE
   #else   // !ESP32
