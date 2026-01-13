@@ -19,7 +19,7 @@ double easingFactor = 0.05;
 /* vars for oil sensor */
 volatile double oilTemperature = 0.0;
 volatile double oilPressure = 0.0;
-volatile double oilSensorStatus = 0;
+volatile uint8_t oilSensorStatus = 0;
 
 // Set up Exponential Weighted moving average for all the sensor readings.
 Ewma boostFilter(easingFactor); // Make the boost needle move a bit faster. 
@@ -68,63 +68,163 @@ void initSensors() {
 
 }
 
-enum PulseType {
-    UNKNOWN,
-    DIAGNOSTIC,
-    TEMPERATURE,
-    PRESSURE
+enum PulseStage : uint8_t {
+  STAGE_SYNC,
+  STAGE_T1,
+  STAGE_T2
 };
 volatile bool sequenceComplete = false;
-volatile PulseType lastPulse = UNKNOWN;
-volatile long pulseDuration = 0;
-volatile long inputDuration = 0;
-volatile long startTime = 0;
+volatile PulseStage pulseStage = STAGE_SYNC;
+volatile bool captureEnabled = false;
+volatile bool haveHighTime = false;
+volatile uint32_t lastRiseUs = 0;
+volatile uint32_t lastHighUs = 0;
+
+static constexpr uint32_t kS1PeriodNomUs = 1024;
+static constexpr uint32_t kT1PeriodNomUs = 4096;
+static constexpr uint32_t kT2PeriodNomUs = 4096;
+static constexpr uint32_t kS1PeriodMinUs = (kS1PeriodNomUs * 9) / 10;
+static constexpr uint32_t kS1PeriodMaxUs = (kS1PeriodNomUs * 11) / 10;
+static constexpr uint32_t kT1PeriodMinUs = (kT1PeriodNomUs * 9) / 10;
+static constexpr uint32_t kT1PeriodMaxUs = (kT1PeriodNomUs * 11) / 10;
+static constexpr uint32_t kT2PeriodMinUs = (kT2PeriodNomUs * 9) / 10;
+static constexpr uint32_t kT2PeriodMaxUs = (kT2PeriodNomUs * 11) / 10;
+
+static constexpr uint32_t kDiagTolUs = 25;
+static constexpr uint32_t kDiagOkUs = 256;
+static constexpr uint32_t kDiagPressureFailUs = 384;
+static constexpr uint32_t kDiagTempFailUs = 512;
+static constexpr uint32_t kDiagHardwareFailUs = 640;
+
+static constexpr uint32_t kValueMinUs = 128;
+static constexpr uint32_t kValueMaxUs = 3968;
+static constexpr uint32_t kValueMarginUs = 16;
+
+static inline bool in_range_u32(uint32_t value, uint32_t min_value, uint32_t max_value) {
+  return value >= min_value && value <= max_value;
+}
+
+static inline uint32_t scale_high_us(uint32_t high_us, uint32_t period_us, uint32_t nominal_period_us) {
+  if (period_us == 0) return 0;
+  return (uint32_t)(((uint64_t)high_us * nominal_period_us + (period_us / 2)) / period_us);
+}
+
+static uint8_t decode_diag_state(uint32_t scaled_s1_us) {
+  if (in_range_u32(scaled_s1_us, kDiagOkUs - kDiagTolUs, kDiagOkUs + kDiagTolUs)) {
+    return 1;
+  }
+  if (in_range_u32(scaled_s1_us, kDiagPressureFailUs - kDiagTolUs, kDiagPressureFailUs + kDiagTolUs)) {
+    return 2;
+  }
+  if (in_range_u32(scaled_s1_us, kDiagTempFailUs - kDiagTolUs, kDiagTempFailUs + kDiagTolUs)) {
+    return 3;
+  }
+  if (in_range_u32(scaled_s1_us, kDiagHardwareFailUs - kDiagTolUs, kDiagHardwareFailUs + kDiagTolUs)) {
+    return 4;
+  }
+  return 0;
+}
+
+static inline double scaled_to_temperature(uint32_t scaled_us) {
+  double temp = ((double)scaled_us - 128.0) / 19.2 - 40.0;
+  if (temp < -40.0) return -40.0;
+  if (temp > 160.0) return 160.0;
+  return temp;
+}
+
+static inline double scaled_to_pressure(uint32_t scaled_us) {
+  double pressure = ((double)scaled_us - 128.0) / 384.0 + 0.5;
+  if (pressure < 0.5) return 0.5;
+  if (pressure > 10.5) return 10.5;
+  return pressure;
+}
 
 // PWM reading from oil temp/pressure sensor
 void IRAM_ATTR oilSensorPWMInterrupt() {
+  if (!captureEnabled) return;
 #if defined(ESP32)
   bool pinState = (GPIO.in & (1ULL << OIL_PRESSURE_PIN)) != 0;
 #else
   bool pinState = digitalRead(OIL_PRESSURE_PIN) == HIGH;
 #endif
-  unsigned long currentTime = micros();
+  uint32_t currentTime = micros();
   if (pinState) {
-    // Start of rising edge of next pulse.
-    pulseDuration = currentTime - startTime;
-    startTime = currentTime;
-    if (pulseDuration < 920) {
-      // if the pulse duration is too short, then it's probably jitter/noise ignore it.
+    // Rising edge: evaluate the previous pulse using its stored high time.
+    if (lastRiseUs == 0) {
+      lastRiseUs = currentTime;
       return;
     }
-    if (pulseDuration < 1150 && lastPulse == UNKNOWN) {
-      // We just saw a diagnostic pulse, so the next pulse will be a temperature.
-      lastPulse = DIAGNOSTIC;
-      double val = (1024.0 / pulseDuration) * inputDuration;
-      if (val >= 231.00 && val <= 281.00) {
-        oilSensorStatus = 1;
-      } else if (val >= 359.00 && val <= 409.00) {
-        oilSensorStatus = 2;
-      } else if (val >= 487.00 && val <= 537.00) {
-        oilSensorStatus = 3;
-      } else if (val >= 615.00 && val <= 655.00) {
-        oilSensorStatus = 4;
+
+    uint32_t periodUs = currentTime - lastRiseUs;
+    lastRiseUs = currentTime;
+
+    if (!haveHighTime) {
+      pulseStage = STAGE_SYNC;
+      return;
+    }
+
+    uint32_t highUs = lastHighUs;
+    haveHighTime = false;
+
+    if (periodUs < kS1PeriodMinUs || periodUs > kT2PeriodMaxUs) {
+      pulseStage = STAGE_SYNC;
+      return;
+    }
+    if (highUs == 0 || highUs > periodUs) {
+      pulseStage = STAGE_SYNC;
+      return;
+    }
+
+    if (pulseStage == STAGE_SYNC) {
+      if (!in_range_u32(periodUs, kS1PeriodMinUs, kS1PeriodMaxUs)) {
+        return;
       }
+      uint32_t scaledS1 = scale_high_us(highUs, periodUs, kS1PeriodNomUs);
+      uint8_t diagState = decode_diag_state(scaledS1);
+      if (diagState == 0) {
+        return;
+      }
+      oilSensorStatus = diagState;
+      pulseStage = STAGE_T1;
+      return;
     }
-    else if (lastPulse == DIAGNOSTIC) {
-      oilTemperature = ((4096.0 / pulseDuration) * inputDuration - 128) / 19.2 - 40;
-      lastPulse = TEMPERATURE;
+
+    if (pulseStage == STAGE_T1) {
+      if (!in_range_u32(periodUs, kT1PeriodMinUs, kT1PeriodMaxUs)) {
+        pulseStage = STAGE_SYNC;
+        return;
+      }
+      uint32_t scaledT1 = scale_high_us(highUs, periodUs, kT1PeriodNomUs);
+      if (!in_range_u32(scaledT1, kValueMinUs - kValueMarginUs, kValueMaxUs + kValueMarginUs)) {
+        pulseStage = STAGE_SYNC;
+        return;
+      }
+      oilTemperature = scaled_to_temperature(scaledT1);
+      pulseStage = STAGE_T2;
+      return;
     }
-    else if (lastPulse == TEMPERATURE) {
-      oilPressure = (((4096.0 / pulseDuration) * inputDuration) - 128) / 384.0 + 0.5;
-      lastPulse = PRESSURE;
-    }
-    else if (lastPulse == PRESSURE) { 
+
+    if (pulseStage == STAGE_T2) {
+      if (!in_range_u32(periodUs, kT2PeriodMinUs, kT2PeriodMaxUs)) {
+        pulseStage = STAGE_SYNC;
+        return;
+      }
+      uint32_t scaledT2 = scale_high_us(highUs, periodUs, kT2PeriodNomUs);
+      if (!in_range_u32(scaledT2, kValueMinUs - kValueMarginUs, kValueMaxUs + kValueMarginUs)) {
+        pulseStage = STAGE_SYNC;
+        return;
+      }
+      oilPressure = scaled_to_pressure(scaledT2);
       sequenceComplete = true;
+      captureEnabled = false;
+      pulseStage = STAGE_SYNC;
+      return;
     }
-    
   } else {
-    // Falling edge = End of input
-    inputDuration = currentTime - startTime;
+    // Falling edge: record the high time for the current pulse.
+    if (lastRiseUs == 0) return;
+    lastHighUs = currentTime - lastRiseUs;
+    haveHighTime = true;
   }
 }
 
@@ -168,31 +268,54 @@ double readIntercoolerTemperatureSensor() {
 
 OilStatusData readOilSensor() {
   OilStatusData status;
-  lastPulse = UNKNOWN;
+  pulseStage = STAGE_SYNC;
   sequenceComplete = false;
+  captureEnabled = true;
+  haveHighTime = false;
+  lastRiseUs = 0;
+  lastHighUs = 0;
   oilSensorStatus = 0;
-  pulseDuration = 0;
-  inputDuration = 0;
-  startTime = micros();
+  oilTemperature = NAN;
+  oilPressure = NAN;
   attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
   // Stay here until the sequence is complete.
-  const uint32_t timeout_us = 100000;
+  const uint32_t timeout_us = 30000;
   uint32_t start_wait = micros();
   while(!sequenceComplete) {
     if ((uint32_t)(micros() - start_wait) > timeout_us) {
       break;
     }
-    delay(1);
+    delayMicroseconds(100);
   }
+  captureEnabled = false;
   detachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN));
   // Set the status struct, and return it. 
-  if (!sequenceComplete) {
+  if (!sequenceComplete || oilSensorStatus == 0) {
     status.oilPressure = NAN;
     status.oilTemperature = NAN;
     status.oilSensorStatus = 0;
   } else {
-    status.oilPressure = oilPressure;
-    status.oilTemperature = oilTemperature;
+    double temp = oilTemperature;
+    double pressure = oilPressure;
+
+    if (oilSensorStatus == 2) {
+      pressure = NAN;
+    } else if (oilSensorStatus == 3) {
+      temp = NAN;
+    } else if (oilSensorStatus == 4) {
+      temp = NAN;
+      pressure = NAN;
+    }
+
+    if (!isnan(temp)) {
+      temp = oilTempFilter.filter(temp);
+    }
+    if (!isnan(pressure)) {
+      pressure = oilPressureFilter.filter(pressure);
+    }
+
+    status.oilPressure = pressure;
+    status.oilTemperature = temp;
     status.oilSensorStatus = oilSensorStatus;
   }
   return status;
