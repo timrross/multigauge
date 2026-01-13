@@ -10,5 +10,6 @@
 
 void initDisplay();
 void initLVGL();
+void initTouch();
 
 #endif // DISPLAY_H

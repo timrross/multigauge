@@ -76,6 +76,8 @@ void Task_LVGL(void *pvParameters) {
 
   initUI();
 
+  initTouch();
+
   // Main LVGL loop
   while (1) {
     unsigned int tickPeriod = millis() - lastTickMillis;
