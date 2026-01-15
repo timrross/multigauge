@@ -22,11 +22,44 @@ volatile double oilPressure = 0.0;
 volatile uint8_t oilSensorStatus = 0;
 
 // Set up Exponential Weighted moving average for all the sensor readings.
+
 Ewma boostFilter(easingFactor); // Make the boost needle move a bit faster. 
 Ewma oilTempFilter(easingFactor); 
 Ewma oilPressureFilter(easingFactor); 
 Ewma egtFilter(easingFactor);
 Ewma intercoolerFilter(easingFactor);
+
+// --- Oil pressure ambient baseline (tare) helpers ---
+static double oilAmbientBar = NAN;  // retained baseline; set via calibration or manually
+
+static inline double toGaugeBar(double rawBar) {
+  // Use 0.5 bar as fallback ambient until calibrated (common floor in spec)
+  const double amb = isnan(oilAmbientBar) ? 0.5 : oilAmbientBar;
+  double g = rawBar - amb;
+  if (g < 0.0) g = 0.0;        // clamp negative to zero for display
+  // Optional: clamp upper bound to 10.5-ambient if desired
+  return g;
+}
+
+// Optional: manual accessors if you want to store/load from NVS
+void setOilAmbientBar(double bar) { oilAmbientBar = bar; }
+double getOilAmbientBar() { return oilAmbientBar; }
+
+// Optional: one-shot calibration when engine is definitely off
+bool calibrateOilZero(uint16_t samples, uint32_t timeoutMs) {
+  double sum = 0.0; uint16_t ok = 0;
+  uint32_t t0 = millis();
+  while (ok < samples && (millis() - t0) < timeoutMs) {
+    OilStatusData s = readOilSensor();
+    if (s.oilSensorStatus == 1 && !isnan(s.oilPressure) && s.oilPressure < 2.0) {
+      sum += s.oilPressure;
+      ok++;
+    }
+    delay(5);
+  }
+  if (ok) { oilAmbientBar = sum / ok; return true; }
+  return false;
+}
 
 void initSensors() {
 
@@ -312,6 +345,8 @@ OilStatusData readOilSensor() {
     }
     if (!isnan(pressure)) {
       pressure = oilPressureFilter.filter(pressure);
+      // Present *gauge* pressure by subtracting ambient (tare). 0.5 bar fallback before calibration.
+      pressure = toGaugeBar(pressure);
     }
 
     status.oilPressure = pressure;

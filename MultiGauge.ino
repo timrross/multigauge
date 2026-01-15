@@ -35,6 +35,25 @@ void setup() {
 
   initSensors();
 
+  #if ENABLE_OIL_SENSOR
+    #if DEBUG
+      Serial.println("Calibrating oil sensor ambient (engine off)…");
+    #endif
+    // Give the sensor a brief settling time
+    delay(300);
+
+    // Try to calibrate the ambient baseline (tare)
+    bool oilCalOK = calibrateOilZero(64, 2000);  // ~64 good frames, max 2s
+
+    #if DEBUG
+      if (oilCalOK) {
+        Serial.printf("Oil ambient baseline set to %.3f bar\n", getOilAmbientBar());
+      } else {
+        Serial.println("Oil ambient calibration failed; using fallback (0.5 bar)");
+      }
+    #endif
+  #endif
+
   xTaskCreatePinnedToCore(Task_LVGL,    // Pointer to the task entry function.
                           "Task_LVGL",  // A descriptive name for the task.
                           1024 * 10,    // The size of the task stack specified as the number of bytes

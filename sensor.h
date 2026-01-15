@@ -1,6 +1,8 @@
 #ifndef SENSOR_H
 #define SENSOR_H
 
+#include <Arduino.h>
+
 #define ADC_MAX_VALUE 4095  // Max ADC value for ESP32 12-bit resolution
 #define VREF 3.3
 
@@ -37,5 +39,9 @@ float readAtmosPressureSensor();
 float readAtmosTemperatureSensor();
 double readIntercoolerTemperatureSensor();
 
+// Oil pressure ambient (tare) helpers
+void setOilAmbientBar(double bar);
+double getOilAmbientBar();
+bool calibrateOilZero(uint16_t samples = 64, uint32_t timeoutMs = 2000);
 
 #endif
