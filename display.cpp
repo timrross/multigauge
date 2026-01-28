@@ -39,15 +39,21 @@ Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
   TFT_R1, TFT_R2, TFT_R3, TFT_R4, TFT_R5,
   TFT_G0, TFT_G1, TFT_G2, TFT_G3, TFT_G4, TFT_G5,
   TFT_B1, TFT_B2, TFT_B3, TFT_B4, TFT_B5,
-  1 /* hsync_polarity */, 10 /* hsync_front_porch */, 2 /* hsync_pulse_width */, 10 /* hsync_back_porch */,
-  1 /* vsync_polarity */, 10 /* vsync_front_porch */, 6 /* vsync_pulse_width */, 10 /* vsync_back_porch */
+  // 2.1 inch display
+  1 /* hsync_polarity */, 50 /* hsync_front_porch */, 2 /* hsync_pulse_width */, 44 /* hsync_back_porch */,
+  1 /* vsync_polarity */, 16 /* vsync_front_porch */, 2 /* vsync_pulse_width */, 18 /* vsync_back_porch */
+  // 2.8 inch display
+  // 1 /* hsync_polarity */, 10 /* hsync_front_porch */, 2 /* hsync_pulse_width */, 10 /* hsync_back_porch */,
+  // 1 /* vsync_polarity */, 10 /* vsync_front_porch */, 6 /* vsync_pulse_width */, 10 /* vsync_back_porch */
   // If you need to force PCLK, some variants support extra args here (left out for maximum compatibility).
 );
 
 Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
   // 2.1" 480x480 round display
   TFT_HOR_RES /* width */, TFT_VER_RES /* height */, rgbpanel, 0 /* rotation */, true /* auto_flush */,
-  expander, GFX_NOT_DEFINED /* RST */, TL028WVC01_init_operations, sizeof(TL028WVC01_init_operations));
+  expander, GFX_NOT_DEFINED /* RST */, TL021WVC02_init_operations, sizeof(TL021WVC02_init_operations)
+  //expander, GFX_NOT_DEFINED /* RST */, TL028WVC01_init_operations, sizeof(TL028WVC01_init_operations)
+);
 
 TAMC_GT911 tp(
   SDA, SCL,
