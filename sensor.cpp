@@ -101,163 +101,384 @@ void initSensors() {
 
 }
 
+/*
+ * =============================================================================
+ * HELLA 6PR 010 378-207 OIL SENSOR PWM PROTOCOL
+ * =============================================================================
+ *
+ * This sensor outputs a continuous PWM signal encoding both oil temperature
+ * and pressure in a 3-pulse repeating sequence. The protocol uses pulse-width
+ * modulation where the HIGH time of each pulse carries the data value.
+ *
+ * SIGNAL TIMING DIAGRAM:
+ * ----------------------
+ *
+ *         |<-- S1 -->|<------ T1 ------>|<------ T2 ------>|
+ *         |  ~1024µs |     ~4096µs      |     ~4096µs      |
+ *         |          |                  |                  |
+ *     ____      ______        __________        __________
+ *    |    |    |      |      |          |      |          |
+ *  __|    |____|      |______|          |______|          |_____ ...
+ *
+ *    ^         ^             ^                 ^
+ *    |         |             |                 |
+ *    SYNC    SYNC+T1       T1+T2             T2+SYNC (next cycle)
+ *
+ *
+ * PULSE SEQUENCE:
+ * ---------------
+ *
+ *   1. SYNC PULSE (S1): Period ~1024µs
+ *      - High time encodes DIAGNOSTIC STATUS
+ *      - Used to synchronize the decoder state machine
+ *
+ *   2. TEMPERATURE PULSE (T1): Period ~4096µs
+ *      - High time encodes OIL TEMPERATURE
+ *      - Range: -40°C to +160°C
+ *
+ *   3. PRESSURE PULSE (T2): Period ~4096µs
+ *      - High time encodes OIL PRESSURE
+ *      - Range: 0.5 to 10.5 bar (absolute)
+ *
+ *
+ * DIAGNOSTIC STATUS ENCODING (SYNC pulse high time):
+ * --------------------------------------------------
+ *
+ *   High Time (µs)  |  Status Code  |  Meaning
+ *   ----------------|---------------|---------------------------
+ *        256        |       1       |  OK - sensor healthy
+ *        384        |       2       |  Pressure sensor failure
+ *        512        |       3       |  Temperature sensor failure
+ *        640        |       4       |  Hardware failure
+ *
+ *   Tolerance: ±25µs around nominal values
+ *
+ *
+ * DATA VALUE ENCODING (T1 and T2 pulse high times):
+ * -------------------------------------------------
+ *
+ *   High time range: 128µs (minimum) to 3968µs (maximum)
+ *   Values are scaled relative to the nominal period to compensate
+ *   for timing variations in the sensor's oscillator.
+ *
+ *   Scaling formula:
+ *     scaled_us = (high_us * nominal_period_us) / actual_period_us
+ *
+ *   Temperature conversion (T1):
+ *     temp_C = (scaled_us - 128) / 19.2 - 40
+ *     Output range: -40°C to +160°C
+ *
+ *   Pressure conversion (T2):
+ *     pressure_bar = (scaled_us - 128) / 384 + 0.5
+ *     Output range: 0.5 to 10.5 bar (absolute pressure)
+ *
+ *
+ * STATE MACHINE:
+ * --------------
+ *
+ *                    ┌─────────────────────────────────────┐
+ *                    │                                     │
+ *                    ▼                                     │
+ *              ┌───────────┐                               │
+ *      ───────►│STAGE_SYNC │◄────────────────┐            │
+ *    (start)   └─────┬─────┘                 │            │
+ *                    │                       │            │
+ *                    │ valid S1 pulse        │ invalid    │
+ *                    │ (diag status OK)      │ period     │
+ *                    ▼                       │            │
+ *              ┌───────────┐                 │            │
+ *              │ STAGE_T1  │─────────────────┘            │
+ *              └─────┬─────┘                              │
+ *                    │                                    │
+ *                    │ valid T1 pulse                     │
+ *                    │ (temp data)                        │
+ *                    ▼                                    │
+ *              ┌───────────┐                              │
+ *              │ STAGE_T2  │──────────────────────────────┘
+ *              └─────┬─────┘      invalid period
+ *                    │
+ *                    │ valid T2 pulse (pressure data)
+ *                    │ → sequenceComplete = true
+ *                    │
+ *                    └──────► (cycle restarts)
+ *
+ *
+ * ISR IMPLEMENTATION NOTES:
+ * -------------------------
+ *
+ *   - Interrupt triggers on BOTH edges (CHANGE mode)
+ *   - Rising edge: Calculate period, process previous pulse's data
+ *   - Falling edge: Record high time for current pulse
+ *   - IRAM_ATTR ensures ISR code is in fast RAM on ESP32
+ *   - Direct GPIO register read avoids digitalRead() overhead
+ *   - ±10% tolerance on period validation handles oscillator drift
+ *
+ * =============================================================================
+ */
+
+// State machine stages for PWM protocol decoding
 enum PulseStage : uint8_t {
-  STAGE_SYNC,
-  STAGE_T1,
-  STAGE_T2
+  STAGE_SYNC,   // Waiting for/processing sync pulse (diagnostic status)
+  STAGE_T1,     // Processing temperature pulse
+  STAGE_T2      // Processing pressure pulse
 };
-volatile bool sequenceComplete = false;
+
+// ISR communication flags and state variables (volatile for ISR access)
+volatile bool sequenceComplete = false;    // Set true when full S1→T1→T2 captured
 volatile PulseStage pulseStage = STAGE_SYNC;
-volatile bool captureEnabled = false;
-volatile bool haveHighTime = false;
-volatile uint32_t lastRiseUs = 0;
-volatile uint32_t lastHighUs = 0;
+volatile bool captureEnabled = false;      // Gate to enable/disable ISR processing
+volatile bool haveHighTime = false;        // Flag: high time recorded for current pulse
+volatile uint32_t lastRiseUs = 0;          // Timestamp of last rising edge (µs)
+volatile uint32_t lastHighUs = 0;          // Recorded high time of current pulse (µs)
 
-static constexpr uint32_t kS1PeriodNomUs = 1024;
-static constexpr uint32_t kT1PeriodNomUs = 4096;
-static constexpr uint32_t kT2PeriodNomUs = 4096;
-static constexpr uint32_t kS1PeriodMinUs = (kS1PeriodNomUs * 9) / 10;
-static constexpr uint32_t kS1PeriodMaxUs = (kS1PeriodNomUs * 11) / 10;
-static constexpr uint32_t kT1PeriodMinUs = (kT1PeriodNomUs * 9) / 10;
-static constexpr uint32_t kT1PeriodMaxUs = (kT1PeriodNomUs * 11) / 10;
-static constexpr uint32_t kT2PeriodMinUs = (kT2PeriodNomUs * 9) / 10;
-static constexpr uint32_t kT2PeriodMaxUs = (kT2PeriodNomUs * 11) / 10;
+// Nominal pulse periods (microseconds) - used for value scaling
+static constexpr uint32_t kS1PeriodNomUs = 1024;   // SYNC pulse nominal period
+static constexpr uint32_t kT1PeriodNomUs = 4096;   // Temperature pulse nominal period
+static constexpr uint32_t kT2PeriodNomUs = 4096;   // Pressure pulse nominal period
 
-static constexpr uint32_t kDiagTolUs = 25;
-static constexpr uint32_t kDiagOkUs = 256;
-static constexpr uint32_t kDiagPressureFailUs = 384;
-static constexpr uint32_t kDiagTempFailUs = 512;
-static constexpr uint32_t kDiagHardwareFailUs = 640;
+// Period validation bounds (±10% tolerance for oscillator drift)
+static constexpr uint32_t kS1PeriodMinUs = (kS1PeriodNomUs * 9) / 10;   // 921µs
+static constexpr uint32_t kS1PeriodMaxUs = (kS1PeriodNomUs * 11) / 10;  // 1126µs
+static constexpr uint32_t kT1PeriodMinUs = (kT1PeriodNomUs * 9) / 10;   // 3686µs
+static constexpr uint32_t kT1PeriodMaxUs = (kT1PeriodNomUs * 11) / 10;  // 4505µs
+static constexpr uint32_t kT2PeriodMinUs = (kT2PeriodNomUs * 9) / 10;   // 3686µs
+static constexpr uint32_t kT2PeriodMaxUs = (kT2PeriodNomUs * 11) / 10;  // 4505µs
 
-static constexpr uint32_t kValueMinUs = 128;
-static constexpr uint32_t kValueMaxUs = 3968;
-static constexpr uint32_t kValueMarginUs = 16;
+// Diagnostic status high-time thresholds (SYNC pulse)
+static constexpr uint32_t kDiagTolUs = 25;              // Tolerance band ±25µs
+static constexpr uint32_t kDiagOkUs = 256;              // Status 1: Sensor OK
+static constexpr uint32_t kDiagPressureFailUs = 384;    // Status 2: Pressure sensor failed
+static constexpr uint32_t kDiagTempFailUs = 512;        // Status 3: Temperature sensor failed
+static constexpr uint32_t kDiagHardwareFailUs = 640;    // Status 4: Hardware failure
 
+// Data value bounds (T1/T2 pulse high times)
+static constexpr uint32_t kValueMinUs = 128;     // Minimum valid data high time
+static constexpr uint32_t kValueMaxUs = 3968;    // Maximum valid data high time
+static constexpr uint32_t kValueMarginUs = 16;   // Extra margin for validation
+
+// Helper: Check if value falls within [min, max] inclusive
 static inline bool in_range_u32(uint32_t value, uint32_t min_value, uint32_t max_value) {
   return value >= min_value && value <= max_value;
 }
 
+/*
+ * Scale the measured high time to compensate for oscillator drift.
+ *
+ * The sensor's internal oscillator may run slightly fast or slow, causing
+ * the actual pulse period to differ from nominal. By scaling the high time
+ * proportionally, we normalize readings as if the period were exactly nominal.
+ *
+ * Formula: scaled = high_us * (nominal_period / actual_period)
+ * The +period/2 provides rounding to nearest integer.
+ */
 static inline uint32_t scale_high_us(uint32_t high_us, uint32_t period_us, uint32_t nominal_period_us) {
   if (period_us == 0) return 0;
   return (uint32_t)(((uint64_t)high_us * nominal_period_us + (period_us / 2)) / period_us);
 }
 
+/*
+ * Decode diagnostic status from SYNC pulse high time.
+ * Returns: 1=OK, 2=Pressure fail, 3=Temp fail, 4=Hardware fail, 0=Unknown
+ */
 static uint8_t decode_diag_state(uint32_t scaled_s1_us) {
   if (in_range_u32(scaled_s1_us, kDiagOkUs - kDiagTolUs, kDiagOkUs + kDiagTolUs)) {
-    return 1;
+    return 1;  // Sensor OK
   }
   if (in_range_u32(scaled_s1_us, kDiagPressureFailUs - kDiagTolUs, kDiagPressureFailUs + kDiagTolUs)) {
-    return 2;
+    return 2;  // Pressure sensor failed
   }
   if (in_range_u32(scaled_s1_us, kDiagTempFailUs - kDiagTolUs, kDiagTempFailUs + kDiagTolUs)) {
-    return 3;
+    return 3;  // Temperature sensor failed
   }
   if (in_range_u32(scaled_s1_us, kDiagHardwareFailUs - kDiagTolUs, kDiagHardwareFailUs + kDiagTolUs)) {
-    return 4;
+    return 4;  // Hardware failure
   }
-  return 0;
+  return 0;    // Unknown/invalid diagnostic state
 }
 
+/*
+ * Convert scaled T1 pulse high time to temperature in Celsius.
+ *
+ * Formula from Hella datasheet:
+ *   temp_C = (scaled_us - 128) / 19.2 - 40
+ *
+ * At 128µs  → -40°C (minimum)
+ * At 3968µs → +160°C (maximum)
+ */
 static inline double scaled_to_temperature(uint32_t scaled_us) {
   double temp = ((double)scaled_us - 128.0) / 19.2 - 40.0;
-  if (temp < -40.0) return -40.0;
+  if (temp < -40.0) return -40.0;    // Clamp to sensor range
   if (temp > 160.0) return 160.0;
   return temp;
 }
 
+/*
+ * Convert scaled T2 pulse high time to pressure in bar (absolute).
+ *
+ * Formula from Hella datasheet:
+ *   pressure_bar = (scaled_us - 128) / 384 + 0.5
+ *
+ * At 128µs  → 0.5 bar (minimum, ~atmospheric)
+ * At 3968µs → 10.5 bar (maximum)
+ *
+ * Note: This is ABSOLUTE pressure. Gauge pressure (relative to atmosphere)
+ * is calculated later by subtracting the calibrated ambient baseline.
+ */
 static inline double scaled_to_pressure(uint32_t scaled_us) {
   double pressure = ((double)scaled_us - 128.0) / 384.0 + 0.5;
-  if (pressure < 0.5) return 0.5;
+  if (pressure < 0.5) return 0.5;    // Clamp to sensor range
   if (pressure > 10.5) return 10.5;
   return pressure;
 }
 
-// PWM reading from oil temp/pressure sensor
+/*
+ * =============================================================================
+ * OIL SENSOR PWM INTERRUPT SERVICE ROUTINE
+ * =============================================================================
+ *
+ * This ISR fires on BOTH edges (rising and falling) of the PWM signal.
+ * It implements a state machine that decodes the S1→T1→T2 pulse sequence.
+ *
+ * Edge handling:
+ *   - FALLING edge: Record the high time (pulse was HIGH, now going LOW)
+ *   - RISING edge:  Calculate period, process the completed pulse's data
+ *
+ * The reason we process on rising edge (not falling) is that we need the
+ * complete period measurement, which requires waiting for the next rising edge.
+ *
+ * IRAM_ATTR ensures this code stays in fast internal RAM on ESP32 for
+ * minimal interrupt latency (~1µs vs ~5µs from flash).
+ */
 void IRAM_ATTR oilSensorPWMInterrupt() {
+  // Early exit if capture is disabled (between readings or after completion)
   if (!captureEnabled) return;
+
+  // Read pin state using direct register access for speed (ESP32)
+  // digitalRead() is slower due to function call overhead
 #if defined(ESP32)
   bool pinState = (GPIO.in & (1ULL << OIL_PRESSURE_PIN)) != 0;
 #else
   bool pinState = digitalRead(OIL_PRESSURE_PIN) == HIGH;
 #endif
+
   uint32_t currentTime = micros();
+
   if (pinState) {
-    // Rising edge: evaluate the previous pulse using its stored high time.
+    // =========================================================================
+    // RISING EDGE: A new pulse is starting
+    // Process the PREVIOUS pulse using its recorded high time and period
+    // =========================================================================
+
+    // First rising edge after enable - just record timestamp, can't measure yet
     if (lastRiseUs == 0) {
       lastRiseUs = currentTime;
       return;
     }
 
+    // Calculate period: time between this rising edge and the previous one
     uint32_t periodUs = currentTime - lastRiseUs;
     lastRiseUs = currentTime;
 
+    // Sanity check: we should have recorded a high time on the falling edge
     if (!haveHighTime) {
-      pulseStage = STAGE_SYNC;
+      pulseStage = STAGE_SYNC;  // Lost sync, restart
       return;
     }
 
     uint32_t highUs = lastHighUs;
-    haveHighTime = false;
+    haveHighTime = false;  // Consume the recorded high time
 
+    // Validate period is within any expected pulse type's range
     if (periodUs < kS1PeriodMinUs || periodUs > kT2PeriodMaxUs) {
-      pulseStage = STAGE_SYNC;
+      pulseStage = STAGE_SYNC;  // Invalid period, restart
       return;
     }
+
+    // Sanity check: high time should be positive and less than period
     if (highUs == 0 || highUs > periodUs) {
       pulseStage = STAGE_SYNC;
       return;
     }
 
+    // -------------------------------------------------------------------------
+    // STATE: STAGE_SYNC - Looking for valid SYNC (S1) pulse
+    // -------------------------------------------------------------------------
     if (pulseStage == STAGE_SYNC) {
+      // SYNC pulse should have ~1024µs period
       if (!in_range_u32(periodUs, kS1PeriodMinUs, kS1PeriodMaxUs)) {
-        return;
+        return;  // Not a SYNC pulse, keep waiting
       }
+
+      // Scale high time and decode diagnostic status
       uint32_t scaledS1 = scale_high_us(highUs, periodUs, kS1PeriodNomUs);
       uint8_t diagState = decode_diag_state(scaledS1);
+
       if (diagState == 0) {
-        return;
+        return;  // Unrecognized diagnostic state, keep waiting for valid SYNC
       }
+
+      // Valid SYNC received - save status and advance to T1
       oilSensorStatus = diagState;
       pulseStage = STAGE_T1;
       return;
     }
 
+    // -------------------------------------------------------------------------
+    // STATE: STAGE_T1 - Expecting temperature (T1) pulse
+    // -------------------------------------------------------------------------
     if (pulseStage == STAGE_T1) {
+      // T1 pulse should have ~4096µs period
       if (!in_range_u32(periodUs, kT1PeriodMinUs, kT1PeriodMaxUs)) {
-        pulseStage = STAGE_SYNC;
+        pulseStage = STAGE_SYNC;  // Wrong period, lost sync
         return;
       }
+
+      // Scale high time and validate data range
       uint32_t scaledT1 = scale_high_us(highUs, periodUs, kT1PeriodNomUs);
       if (!in_range_u32(scaledT1, kValueMinUs - kValueMarginUs, kValueMaxUs + kValueMarginUs)) {
-        pulseStage = STAGE_SYNC;
+        pulseStage = STAGE_SYNC;  // Invalid data value
         return;
       }
+
+      // Convert to temperature and advance to T2
       oilTemperature = scaled_to_temperature(scaledT1);
       pulseStage = STAGE_T2;
       return;
     }
 
+    // -------------------------------------------------------------------------
+    // STATE: STAGE_T2 - Expecting pressure (T2) pulse
+    // -------------------------------------------------------------------------
     if (pulseStage == STAGE_T2) {
+      // T2 pulse should have ~4096µs period
       if (!in_range_u32(periodUs, kT2PeriodMinUs, kT2PeriodMaxUs)) {
-        pulseStage = STAGE_SYNC;
+        pulseStage = STAGE_SYNC;  // Wrong period, lost sync
         return;
       }
+
+      // Scale high time and validate data range
       uint32_t scaledT2 = scale_high_us(highUs, periodUs, kT2PeriodNomUs);
       if (!in_range_u32(scaledT2, kValueMinUs - kValueMarginUs, kValueMaxUs + kValueMarginUs)) {
-        pulseStage = STAGE_SYNC;
+        pulseStage = STAGE_SYNC;  // Invalid data value
         return;
       }
+
+      // Convert to pressure - SEQUENCE COMPLETE!
       oilPressure = scaled_to_pressure(scaledT2);
-      sequenceComplete = true;
-      captureEnabled = false;
-      pulseStage = STAGE_SYNC;
+      sequenceComplete = true;   // Signal to main code that data is ready
+      captureEnabled = false;    // Stop processing until next read request
+      pulseStage = STAGE_SYNC;   // Reset for next sequence
       return;
     }
+
   } else {
-    // Falling edge: record the high time for the current pulse.
-    if (lastRiseUs == 0) return;
-    lastHighUs = currentTime - lastRiseUs;
-    haveHighTime = true;
+    // =========================================================================
+    // FALLING EDGE: Pulse going from HIGH to LOW
+    // Record the high time for processing on next rising edge
+    // =========================================================================
+    if (lastRiseUs == 0) return;  // No rising edge recorded yet
+    lastHighUs = currentTime - lastRiseUs;  // Duration pulse was HIGH
+    haveHighTime = true;                     // Flag that we have valid data
   }
 }
 
@@ -299,8 +520,28 @@ double readIntercoolerTemperatureSensor() {
   return intercoolerFilter.filter(calculate_thermistor_temperature(Rt));
 }
 
+/*
+ * Read oil temperature and pressure from Hella sensor.
+ *
+ * This function:
+ *   1. Resets the ISR state machine
+ *   2. Enables interrupt capture on the sensor pin
+ *   3. Waits (with timeout) for a complete S1→T1→T2 sequence
+ *   4. Disables interrupt and processes results
+ *   5. Applies EWMA filtering and gauge pressure correction
+ *
+ * Returns OilStatusData struct with:
+ *   - oilTemperature: Filtered temperature in °C (NAN if failed)
+ *   - oilPressure: Filtered GAUGE pressure in bar (NAN if failed)
+ *   - oilSensorStatus: 0=timeout, 1=OK, 2=pressure fail, 3=temp fail, 4=hw fail
+ *
+ * Typical timing: ~10-15ms for complete sequence (3 pulses)
+ * Timeout: 30ms (allows ~3 complete sequence attempts)
+ */
 OilStatusData readOilSensor() {
   OilStatusData status;
+
+  // Reset ISR state machine to known initial state
   pulseStage = STAGE_SYNC;
   sequenceComplete = false;
   captureEnabled = true;
@@ -310,42 +551,54 @@ OilStatusData readOilSensor() {
   oilSensorStatus = 0;
   oilTemperature = NAN;
   oilPressure = NAN;
+
+  // Attach interrupt - fires on BOTH edges for PWM decoding
   attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
-  // Stay here until the sequence is complete.
-  const uint32_t timeout_us = 30000;
+
+  // Wait for ISR to capture complete sequence (or timeout)
+  // The ISR sets sequenceComplete=true after valid S1→T1→T2
+  const uint32_t timeout_us = 30000;  // 30ms timeout
   uint32_t start_wait = micros();
   while(!sequenceComplete) {
     if ((uint32_t)(micros() - start_wait) > timeout_us) {
-      break;
+      break;  // Timeout - sensor may be disconnected or malfunctioning
     }
-    delayMicroseconds(100);
+    delayMicroseconds(100);  // Yield briefly to avoid busy-waiting
   }
+
+  // Disable capture and detach interrupt
   captureEnabled = false;
   detachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN));
-  // Set the status struct, and return it. 
+
+  // Process results and build return struct
   if (!sequenceComplete || oilSensorStatus == 0) {
+    // Timeout or invalid sequence - return NAN values
     status.oilPressure = NAN;
     status.oilTemperature = NAN;
     status.oilSensorStatus = 0;
   } else {
+    // Valid sequence captured - process based on diagnostic status
     double temp = oilTemperature;
     double pressure = oilPressure;
 
+    // Invalidate specific readings based on sensor-reported failures
     if (oilSensorStatus == 2) {
-      pressure = NAN;
+      pressure = NAN;  // Pressure sensor failed, temp still valid
     } else if (oilSensorStatus == 3) {
-      temp = NAN;
+      temp = NAN;      // Temperature sensor failed, pressure still valid
     } else if (oilSensorStatus == 4) {
-      temp = NAN;
+      temp = NAN;      // Hardware failure - both invalid
       pressure = NAN;
     }
 
+    // Apply EWMA low-pass filtering for smooth gauge display
     if (!isnan(temp)) {
       temp = oilTempFilter.filter(temp);
     }
     if (!isnan(pressure)) {
       pressure = oilPressureFilter.filter(pressure);
-      // Present *gauge* pressure by subtracting ambient (tare). 0.5 bar fallback before calibration.
+      // Convert from absolute to gauge pressure (subtract ambient baseline)
+      // Uses 0.5 bar fallback if calibration hasn't been performed
       pressure = toGaugeBar(pressure);
     }
 

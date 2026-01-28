@@ -129,10 +129,8 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     data->state = LV_INDEV_STATE_PRESSED;
     data->point.x = touch_x[0];
     data->point.y = touch_y[0];
-    updateTouchDebugDots(touch_count, touch_x, touch_y);
   } else {
     data->state = LV_INDEV_STATE_RELEASED;
-    updateTouchDebugDots(0, NULL, NULL);
   }
 }
 

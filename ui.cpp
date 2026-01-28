@@ -21,11 +21,6 @@ lv_obj_t *egtUnit;
 lv_obj_t *intercoolerUnit;
 lv_obj_t *fps_label;
 
-static const uint8_t kTouchMaxPoints = 5;
-static const int16_t kTouchDotSize = 8;
-static lv_obj_t *touchDots[kTouchMaxPoints];
-static bool touchDotsReady = false;
-
 // Keep current values of all the sensors,
 // so UI updates only happen when the displayed value changes.
 int boostPressure = -1;
@@ -106,56 +101,6 @@ void update_fps_label(lv_timer_t * timer) {
     }
 }
 
-static void initTouchDebugDots() {
-  static lv_style_t style_touch;
-  lv_style_init(&style_touch);
-  lv_style_set_radius(&style_touch, LV_RADIUS_CIRCLE);
-  lv_style_set_bg_color(&style_touch, lv_color_hex(0xFFD000));
-  lv_style_set_bg_opa(&style_touch, LV_OPA_COVER);
-  lv_style_set_border_width(&style_touch, 0);
-
-  for (uint8_t i = 0; i < kTouchMaxPoints; i++) {
-    touchDots[i] = lv_obj_create(lv_screen_active());
-    lv_obj_set_size(touchDots[i], kTouchDotSize, kTouchDotSize);
-    lv_obj_add_style(touchDots[i], &style_touch, LV_PART_MAIN);
-    lv_obj_clear_flag(touchDots[i], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(touchDots[i], LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(touchDots[i], LV_OBJ_FLAG_HIDDEN);
-  }
-
-  touchDotsReady = true;
-}
-
-void updateTouchDebugDots(uint8_t count, const int16_t *xs, const int16_t *ys) {
-  if (!touchDotsReady) return;
-
-  for (uint8_t i = 0; i < kTouchMaxPoints; i++) {
-    lv_obj_add_flag(touchDots[i], LV_OBJ_FLAG_HIDDEN);
-  }
-
-  if (count == 0 || xs == NULL || ys == NULL) return;
-
-  if (count > kTouchMaxPoints) {
-    count = kTouchMaxPoints;
-  }
-
-  const int16_t radius = kTouchDotSize / 2;
-  const int16_t max_x = TFT_HOR_RES - kTouchDotSize;
-  const int16_t max_y = TFT_VER_RES - kTouchDotSize;
-
-  for (uint8_t i = 0; i < count; i++) {
-    int16_t x = xs[i] - radius;
-    int16_t y = ys[i] - radius;
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    if (x > max_x) x = max_x;
-    if (y > max_y) y = max_y;
-
-    lv_obj_set_pos(touchDots[i], x, y);
-    lv_obj_clear_flag(touchDots[i], LV_OBJ_FLAG_HIDDEN);
-  }
-}
-
 void initUI() {
 
   lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), LV_PART_MAIN);
@@ -217,9 +162,7 @@ void initUI() {
   create_fps_label();
 
   // Create a timer to update the FPS label
-  lv_timer_create(update_fps_label, 10, NULL); // Update every second
-
-  initTouchDebugDots();
+  lv_timer_create(update_fps_label, 10, NULL);
 
 }
 
