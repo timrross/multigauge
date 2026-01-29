@@ -67,7 +67,7 @@ void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valu
   *unitLabel = lv_label_create(container);
   lv_label_set_text(*unitLabel, unitText);
   lv_obj_add_style(*unitLabel, &style_units, 0);
-  lv_obj_align_to(*unitLabel, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the bottom left
+  lv_obj_align_to(*unitLabel, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the right
 }
 
 void create_fps_label() {
@@ -155,6 +155,7 @@ void initUI() {
 
   // Create sensor widgets
   createSensorWidget(grid, "Oil Press.", &oilPressureLabel, &oilPressureUnit, "bar", 0, 0);
+  lv_obj_align_to(oilPressureUnit, oilPressureLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 25, -3); // Extra offset for "bar"
   createSensorWidget(grid, "Oil Temp.", &oilTempLabel, &oilTempUnit, "°C", 1, 0);
   createSensorWidget(grid, "EGT", &egtLabel, &egtUnit, "°C", 0, 1);
   createSensorWidget(grid, "Intake", &intercoolerLabel, &intercoolerUnit, "°C", 1, 1);
@@ -187,7 +188,7 @@ void setBoostPressure(double value)
 static void setLabelValue(lv_obj_t *valueLabel, lv_obj_t *unitLabel, const char *value) {
   if (valueLabel == NULL || unitLabel == NULL) return;
   lv_label_set_text(valueLabel, value);
-  lv_obj_align_to(unitLabel, valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the bottom left
+  lv_obj_align_to(unitLabel, valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3); // Align units to the right
 }
 
 void setOilTemperature(double value) {
@@ -207,7 +208,7 @@ void setOilTemperature(double value) {
 
 void setOilPressure(double value) {
   #if ENABLE_OIL_SENSOR
-    if (!isnan(value)) {           
+    if (!isnan(value)) {
       if (oilPressureLabel == NULL || oilPressureUnit == NULL) return;
       int tenths = (int)lround(value * 10.0);
       if (lastOilPressureTenths != tenths) {
@@ -215,7 +216,8 @@ void setOilPressure(double value) {
         int whole = tenths / 10;
         int frac = abs(tenths % 10);
         snprintf(buf, sizeof(buf), "%d.%d", whole, frac);
-        setLabelValue(oilPressureLabel, oilPressureUnit, buf);
+        lv_label_set_text(oilPressureLabel, buf);
+        lv_obj_align_to(oilPressureUnit, oilPressureLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 26, -3);
         lastOilPressureTenths = tenths;
       }
     }
