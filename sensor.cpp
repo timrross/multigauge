@@ -61,6 +61,9 @@ bool calibrateOilZero(uint16_t samples, uint32_t timeoutMs) {
   return false;
 }
 
+// Forward declaration for ISR
+void IRAM_ATTR oilSensorPWMInterrupt();
+
 void initSensors() {
 
   // Set up atmos sensor
@@ -97,6 +100,7 @@ void initSensors() {
   #if ENABLE_OIL_SENSOR
     // Serial.println("Initializing oil sensor...");
     pinMode(OIL_PRESSURE_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
   #endif
 
 }
@@ -552,9 +556,6 @@ OilStatusData readOilSensor() {
   oilTemperature = NAN;
   oilPressure = NAN;
 
-  // Attach interrupt - fires on BOTH edges for PWM decoding
-  attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
-
   // Wait for ISR to capture complete sequence (or timeout)
   // The ISR sets sequenceComplete=true after valid S1→T1→T2
   const uint32_t timeout_us = 30000;  // 30ms timeout
@@ -566,9 +567,8 @@ OilStatusData readOilSensor() {
     delayMicroseconds(100);  // Yield briefly to avoid busy-waiting
   }
 
-  // Disable capture and detach interrupt
+  // Disable capture (interrupt stays attached but ISR exits early)
   captureEnabled = false;
-  detachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN));
 
   // Process results and build return struct
   if (!sequenceComplete || oilSensorStatus == 0) {

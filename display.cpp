@@ -64,6 +64,15 @@ TAMC_GT911 tp(
 
 static lv_indev_t *touch_indev = NULL;
 
+// Frame counter for FPS measurement
+static volatile uint32_t flush_count = 0;
+
+uint32_t getAndResetFlushCount() {
+  uint32_t count = flush_count;
+  flush_count = 0;
+  return count;
+}
+
 /* Change to your screen resolution */
 uint32_t screenWidth;
 uint32_t screenHeight;
@@ -90,6 +99,8 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     uint32_t h = lv_area_get_height(area);
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
   #endif  // #ifndef DIRECT_MODE
+
+  flush_count++;
 
   /*Call it to tell LVGL you are ready*/
   lv_disp_flush_ready(disp);

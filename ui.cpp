@@ -84,21 +84,10 @@ void create_fps_label() {
 }
 
 void update_fps_label(lv_timer_t * timer) {
-    static uint32_t last_time = 0;
-    static uint32_t frame_count = 0;
-
-    frame_count++;
-    uint32_t current_time = millis();
-
-    if (current_time - last_time >= 1000) { // Update every second
-        uint32_t fps = frame_count;
-        frame_count = 0;
-        last_time = current_time;
-
-        char fps_text[16];
-        snprintf(fps_text, sizeof(fps_text), "FPS: %u", fps);
-        lv_label_set_text(fps_label, fps_text);
-    }
+    uint32_t fps = getAndResetFlushCount();
+    char fps_text[16];
+    snprintf(fps_text, sizeof(fps_text), "FPS: %u", (unsigned int)fps);
+    lv_label_set_text(fps_label, fps_text);
 }
 
 void initUI() {
@@ -162,8 +151,8 @@ void initUI() {
 
   create_fps_label();
 
-  // Create a timer to update the FPS label
-  lv_timer_create(update_fps_label, 10, NULL);
+  // Create a timer to update the FPS label every second
+  lv_timer_create(update_fps_label, 1000, NULL);
 
 }
 
