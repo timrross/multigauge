@@ -287,16 +287,22 @@ double readIntercoolerTemperatureSensor() {
 OilStatusData readOilSensor() {
   OilStatusData status;
 
+  // Disable interrupt while resetting ISR state to avoid race conditions
+  detachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN));
+
   // Reset ISR state
   pulseStage = STAGE_SYNC;
   sequenceComplete = false;
-  captureEnabled = true;
   haveHighTime = false;
   lastRiseUs = 0;
   lastHighUs = 0;
   oilSensorStatus = 0;
   oilTemperature = NAN;
   oilPressure = NAN;
+
+  // Re-enable interrupt and start capture
+  captureEnabled = true;
+  attachInterrupt(digitalPinToInterrupt(OIL_PRESSURE_PIN), oilSensorPWMInterrupt, CHANGE);
 
   // Wait for sequence completion
   const uint32_t timeout_us = 30000;
@@ -347,6 +353,7 @@ double readEgtSensor() {
   double egt = thermocouple.readCelsius();
   if (isnan(egt)) {
     thermocouple.readError();  // Clear error
+    return NAN;  // Don't pass NaN through filter
   }
   return egtFilter.filter(egt);
 }

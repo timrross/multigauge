@@ -10,6 +10,10 @@
 LV_IMG_DECLARE(gauge_bg);
 LV_IMG_DECLARE(needle);
 
+// Screens
+lv_obj_t *splash_screen = NULL;
+lv_obj_t *gauge_screen = NULL;
+
 // UI elements
 lv_obj_t *needleImg;
 lv_obj_t *oilTempLabel;
@@ -21,6 +25,7 @@ lv_obj_t *oilPressureUnit;
 lv_obj_t *egtUnit;
 lv_obj_t *intercoolerUnit;
 lv_obj_t *fps_label;
+lv_obj_t *connection_indicator;
 
 // Last displayed values for change detection
 int boostPressure = -1;
@@ -31,19 +36,25 @@ int lastIntercoolerTemperatureC = INT_MIN;
 
 void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valueLabel, lv_obj_t **unitLabel, const char *unitText, int col, int row) {
   static lv_style_t style_label;
-  lv_style_init(&style_label);
-  lv_style_set_text_color(&style_label, lv_color_darken(lv_color_white(), 64));
-  lv_style_set_text_font(&style_label, &lv_font_montserrat_18);
-
   static lv_style_t style_value;
-  lv_style_init(&style_value);
-  lv_style_set_text_color(&style_value, lv_color_white());
-  lv_style_set_text_font(&style_value, &lv_font_montserrat_34);
-
   static lv_style_t style_units;
-  lv_style_init(&style_units);
-  lv_style_set_text_color(&style_units, lv_color_darken(lv_color_white(), 64));
-  lv_style_set_text_font(&style_units, &lv_font_montserrat_18);
+  static bool styles_initialized = false;
+
+  if (!styles_initialized) {
+    lv_style_init(&style_label);
+    lv_style_set_text_color(&style_label, lv_color_darken(lv_color_white(), 64));
+    lv_style_set_text_font(&style_label, &lv_font_montserrat_18);
+
+    lv_style_init(&style_value);
+    lv_style_set_text_color(&style_value, lv_color_white());
+    lv_style_set_text_font(&style_value, &lv_font_montserrat_34);
+
+    lv_style_init(&style_units);
+    lv_style_set_text_color(&style_units, lv_color_darken(lv_color_white(), 64));
+    lv_style_set_text_font(&style_units, &lv_font_montserrat_18);
+
+    styles_initialized = true;
+  }
 
   lv_obj_t *container = lv_obj_create(parent);
   lv_obj_set_grid_cell(container, LV_GRID_ALIGN_STRETCH, col, 1, LV_GRID_ALIGN_STRETCH, row, 1);
@@ -68,16 +79,36 @@ void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valu
   lv_obj_align_to(*unitLabel, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3);
 }
 
-void create_fps_label() {
+void create_fps_label(lv_obj_t *parent) {
   static lv_style_t style_label;
   lv_style_init(&style_label);
   lv_style_set_text_color(&style_label, lv_color_darken(lv_color_white(), 64));
   lv_style_set_text_font(&style_label, &lv_font_montserrat_14);
 
-  fps_label = lv_label_create(lv_scr_act());
+  fps_label = lv_label_create(parent);
   lv_label_set_text(fps_label, "FPS: 0");
   lv_obj_add_style(fps_label, &style_label, LV_PART_MAIN);
   lv_obj_align(fps_label, LV_ALIGN_CENTER, 0, 100);
+}
+
+void create_connection_indicator(lv_obj_t *parent) {
+  // Small circle indicator at bottom of screen
+  connection_indicator = lv_obj_create(parent);
+  lv_obj_set_size(connection_indicator, 12, 12);
+  lv_obj_align(connection_indicator, LV_ALIGN_CENTER, 0, 120);
+  lv_obj_set_style_radius(connection_indicator, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_border_width(connection_indicator, 0, LV_PART_MAIN);
+  // Start as disconnected (red)
+  lv_obj_set_style_bg_color(connection_indicator, lv_color_hex(0xFF0000), LV_PART_MAIN);
+}
+
+void setConnectionStatus(bool connected) {
+  if (connection_indicator == NULL) return;
+  if (connected) {
+    lv_obj_set_style_bg_color(connection_indicator, lv_color_hex(0x00FF00), LV_PART_MAIN);
+  } else {
+    lv_obj_set_style_bg_color(connection_indicator, lv_color_hex(0xFF0000), LV_PART_MAIN);
+  }
 }
 
 void update_fps_label(lv_timer_t *timer) {
@@ -87,15 +118,56 @@ void update_fps_label(lv_timer_t *timer) {
   lv_label_set_text(fps_label, fps_text);
 }
 
-void initUI() {
-  lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), LV_PART_MAIN);
+// ============================================================
+// Splash Screen
+// ============================================================
 
-  lv_obj_t *background = lv_image_create(lv_screen_active());
+void createSplashScreen() {
+  splash_screen = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(splash_screen, lv_color_black(), LV_PART_MAIN);
+
+  // Title text
+  lv_obj_t *title = lv_label_create(splash_screen);
+  lv_label_set_text(title, "MultiGauge");
+  lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_34, LV_PART_MAIN);
+  lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
+
+  // Initializing text
+  lv_obj_t *status = lv_label_create(splash_screen);
+  lv_label_set_text(status, "Initializing...");
+  lv_obj_set_style_text_color(status, lv_color_darken(lv_color_white(), 64), LV_PART_MAIN);
+  lv_obj_set_style_text_font(status, &lv_font_montserrat_18, LV_PART_MAIN);
+  lv_obj_align(status, LV_ALIGN_CENTER, 0, 20);
+}
+
+void showSplashScreen() {
+  if (splash_screen == NULL) {
+    createSplashScreen();
+  }
+  lv_screen_load(splash_screen);
+}
+
+void showGaugeScreen() {
+  if (gauge_screen != NULL) {
+    lv_screen_load(gauge_screen);
+  }
+}
+
+// ============================================================
+// Gauge Screen
+// ============================================================
+
+void createGaugeScreen() {
+  gauge_screen = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(gauge_screen, lv_color_black(), LV_PART_MAIN);
+
+  lv_obj_t *background = lv_image_create(gauge_screen);
   lv_obj_align(background, LV_ALIGN_CENTER, 0, 0);
   lv_image_set_src(background, &gauge_bg);
   lv_obj_set_size(background, 480, 480);
 
-  needleImg = lv_image_create(lv_screen_active());
+  needleImg = lv_image_create(gauge_screen);
   lv_image_set_src(needleImg, &needle);
   lv_obj_align(needleImg, LV_ALIGN_CENTER, 116, 0);
   lv_image_set_pivot(needleImg, 3, 10);
@@ -114,7 +186,7 @@ void initUI() {
   lv_style_set_shadow_ofs_x(&style_circle, 0);
   lv_style_set_shadow_ofs_y(&style_circle, 0);
 
-  lv_obj_t *circle = lv_obj_create(lv_screen_active());
+  lv_obj_t *circle = lv_obj_create(gauge_screen);
   lv_obj_add_style(circle, &style_circle, 0);
   lv_obj_set_size(circle, 280, 280);
   lv_obj_center(circle);
@@ -140,8 +212,21 @@ void initUI() {
   createSensorWidget(grid, "EGT", &egtLabel, &egtUnit, "°C", 0, 1);
   createSensorWidget(grid, "Intake", &intercoolerLabel, &intercoolerUnit, "°C", 1, 1);
 
-  create_fps_label();
+  create_fps_label(gauge_screen);
+  create_connection_indicator(gauge_screen);
   lv_timer_create(update_fps_label, 1000, NULL);
+}
+
+// ============================================================
+// Public Init Function
+// ============================================================
+
+void initUI() {
+  // Show splash screen immediately
+  showSplashScreen();
+
+  // Create gauge screen in background (will be shown later)
+  createGaugeScreen();
 }
 
 void setBoostPressure(double value) {

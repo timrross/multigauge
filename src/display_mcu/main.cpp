@@ -10,9 +10,10 @@
 // ============================================================
 
 SemaphoreHandle_t gui_mutex;
+SemaphoreHandle_t sensor_data_mutex;
 unsigned long lastTickMillis = 0;
 
-// Shared sensor data (protected by mutex in UI updates)
+// Shared sensor data (protected by sensor_data_mutex)
 SensorData sensorData;
 
 // ============================================================
@@ -22,9 +23,23 @@ SensorData sensorData;
 void Task_LVGL(void *pvParameters) {
   initDisplay();
   initLVGL();
-  initUI();
+  initUI();  // Shows splash screen and creates gauge screen
   initTouch();
 
+  // Run LVGL briefly to display splash screen
+  lastTickMillis = millis();
+  for (int i = 0; i < 100; i++) {  // ~500ms of splash
+    unsigned int tickPeriod = millis() - lastTickMillis;
+    lv_tick_inc(tickPeriod);
+    lastTickMillis = millis();
+    lv_timer_handler();
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+
+  // Transition to gauge screen
+  showGaugeScreen();
+
+  // Main LVGL loop
   while (1) {
     unsigned int tickPeriod = millis() - lastTickMillis;
     lv_tick_inc(tickPeriod);
@@ -45,8 +60,11 @@ void Task_LVGL(void *pvParameters) {
 
 void Task_CAN_Receive(void *pvParameters) {
   while (1) {
-    // Process incoming CAN messages
-    processCANMessages(&sensorData);
+    // Process incoming CAN messages (protected by mutex)
+    if (xSemaphoreTake(sensor_data_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      processCANMessages(&sensorData);
+      xSemaphoreGive(sensor_data_mutex);
+    }
     vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
   }
 }
@@ -57,8 +75,20 @@ void Task_CAN_Receive(void *pvParameters) {
 
 void Task_Screen_Update(void *pvParameters) {
   while (1) {
+    // Copy sensor data under mutex protection
+    SensorData localData;
+    if (xSemaphoreTake(sensor_data_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      localData = sensorData;
+      xSemaphoreGive(sensor_data_mutex);
+    }
+
+    // Check connection status
+    bool connected = isSensorConnected();
+
+    // Update UI with local copy (GUI mutex for LVGL)
     if (xSemaphoreTake(gui_mutex, portMAX_DELAY) == pdTRUE) {
-      updateUI(sensorData);
+      updateUI(localData);
+      setConnectionStatus(connected);
       xSemaphoreGive(gui_mutex);
     }
     vTaskDelay(pdMS_TO_TICKS(25));  // Update UI at ~40Hz
@@ -75,10 +105,11 @@ void setup() {
     Serial.println("MultiGauge Display MCU starting...");
   #endif
 
-  // Create GUI mutex
+  // Create mutexes
   gui_mutex = xSemaphoreCreateMutex();
-  if (gui_mutex == NULL) {
-    Serial.println("GUI mutex creation failed!");
+  sensor_data_mutex = xSemaphoreCreateMutex();
+  if (gui_mutex == NULL || sensor_data_mutex == NULL) {
+    Serial.println("Mutex creation failed!");
     while (1) delay(1000);
   }
 

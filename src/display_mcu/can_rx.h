@@ -22,4 +22,8 @@ uint8_t getLastHeartbeatCounter();
 // Get time since last heartbeat (ms) - for connection monitoring
 uint32_t getTimeSinceLastHeartbeat();
 
+// Check if sensor MCU connection is active (heartbeat within timeout)
+#define HEARTBEAT_TIMEOUT_MS 3000
+bool isSensorConnected();
+
 #endif // CAN_RX_H

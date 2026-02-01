@@ -1,17 +1,10 @@
 #include <Arduino.h>
 #include <driver/twai.h>
-#include <Ewma.h>
 #include "can_rx.h"
 #include "can_protocol.h"
 #include "sensor_types.h"
 
-// EWMA filters for smooth display updates
-static double easingFactor = 0.1;  // Slightly faster than sensor MCU since already filtered
-static Ewma boostFilter(easingFactor);
-static Ewma oilTempFilter(easingFactor);
-static Ewma oilPressureFilter(easingFactor);
-static Ewma egtFilter(easingFactor);
-static Ewma intercoolerFilter(easingFactor);
+// Note: No EWMA filtering here - sensor MCU already filters data
 
 // Heartbeat tracking
 static uint8_t lastHeartbeatCounter = 0;
@@ -52,6 +45,15 @@ uint32_t getTimeSinceLastHeartbeat() {
   return millis() - lastHeartbeatTime;
 }
 
+bool isSensorConnected() {
+  // Consider connected if we've received a heartbeat and it's within timeout
+  // Also return false if we've never received a heartbeat (lastHeartbeatTime == 0)
+  if (lastHeartbeatTime == 0) {
+    return false;
+  }
+  return getTimeSinceLastHeartbeat() < HEARTBEAT_TIMEOUT_MS;
+}
+
 bool processCANMessages(SensorData* data) {
   twai_message_t message;
   bool received = false;
@@ -65,7 +67,7 @@ bool processCANMessages(SensorData* data) {
         CanMsgBoost* msg = (CanMsgBoost*)message.data;
         double boost_psi = decodeBoostPsi(msg);
         if (!isnan(boost_psi)) {
-          data->boostPressure = boostFilter.filter(boost_psi);
+          data->boostPressure = boost_psi;
         }
         break;
       }
@@ -75,10 +77,10 @@ bool processCANMessages(SensorData* data) {
         double temp = decodeOilTempC(msg);
         double pressure = decodeOilPressureBar(msg);
         if (!isnan(temp)) {
-          data->oilTemperature = oilTempFilter.filter(temp);
+          data->oilTemperature = temp;
         }
         if (!isnan(pressure)) {
-          data->oilPressure = oilPressureFilter.filter(pressure);
+          data->oilPressure = pressure;
         }
         break;
       }
@@ -87,7 +89,7 @@ bool processCANMessages(SensorData* data) {
         CanMsgEgt* msg = (CanMsgEgt*)message.data;
         double temp = decodeEgtC(msg);
         if (!isnan(temp)) {
-          data->egt = egtFilter.filter(temp);
+          data->egt = temp;
         }
         break;
       }
@@ -96,7 +98,7 @@ bool processCANMessages(SensorData* data) {
         CanMsgIntercooler* msg = (CanMsgIntercooler*)message.data;
         double temp = decodeIntercoolerTempC(msg);
         if (!isnan(temp)) {
-          data->intercoolerTemperature = intercoolerFilter.filter(temp);
+          data->intercoolerTemperature = temp;
         }
         break;
       }
