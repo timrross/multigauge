@@ -118,9 +118,6 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
       touch_x[i] = x;
       touch_y[i] = y;
 
-      #if DEBUG
-        Serial.printf("Touch %u: x=%d y=%d size=%d\n", i, x, y, tp.points[i].size);
-      #endif
     }
 
     data->state = LV_INDEV_STATE_PRESSED;

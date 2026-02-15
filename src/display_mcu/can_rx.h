@@ -5,9 +5,9 @@
 #include "can_protocol.h"
 #include "sensor_types.h"
 
-// ESP32-S3 Qualia CAN pins (repurposed from SPI)
-#define CAN_TX_PIN  5   // GPIO5 (was SCK)
-#define CAN_RX_PIN  6   // GPIO6 (was MISO)
+// ESP32-S3 Qualia CAN pins (using analog header)
+#define CAN_TX_PIN  16  // A1 (GPIO16)
+#define CAN_RX_PIN  17  // A0 (GPIO17)
 
 // Initialize TWAI (CAN) peripheral for receiving
 bool initCAN();

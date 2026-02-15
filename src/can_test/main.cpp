@@ -1,12 +1,10 @@
-// CAN transceiver self-test for ESP32-C3-Zero + SN65HVD230
+// CAN transceiver self-test
 // Uses TWAI_MODE_NO_ACK (self-test) to loopback messages through the transceiver.
 // No second CAN node required.
+// CAN_TX_PIN and CAN_RX_PIN are set via build flags in platformio.ini
 
 #include <Arduino.h>
 #include <driver/twai.h>
-
-#define CAN_TX_PIN  7
-#define CAN_RX_PIN  6
 
 static bool driverRunning = false;
 
