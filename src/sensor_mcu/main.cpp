@@ -16,12 +16,19 @@ TaskHandle_t taskHeartbeatHandle = NULL;
 // ============================================================
 
 void Task_Read_Boost(void *pvParameters) {
+  uint32_t cycle = 0;
   while (1) {
     #if ENABLE_BOOST_SENSOR
       double boost = readBoostPressureSensor();
       sendBoostMessage(boost, !isnan(boost));
+
+      // Print every 10th cycle (~1s) to avoid flooding serial
+      if (cycle % 10 == 0) {
+        Serial.printf("[BOOST] %.2f psi\n", boost);
+      }
     #endif
 
+    cycle++;
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
@@ -43,12 +50,15 @@ void Task_Read_Sensors(void *pvParameters) {
         oilData.oilSensorStatus,
         oilData.oilSensorStatus == 1
       );
+      Serial.printf("[OIL] status=%u  temp=%.1f C  pressure=%.2f bar\n",
+        oilData.oilSensorStatus, oilData.oilTemperature, oilData.oilPressure);
     #endif
 
     // EGT sensor - every 500ms (every cycle)
     #if ENABLE_EGT_SENSOR
       double egt = readEgtSensor();
       sendEgtMessage(egt, !isnan(egt));
+      Serial.printf("[EGT] %.1f C\n", egt);
     #endif
 
     // Slower sensors - every 1000ms (every other cycle)
@@ -56,6 +66,7 @@ void Task_Read_Sensors(void *pvParameters) {
       #if ENABLE_INTERCOOLER_SENSOR
         double intercooler = readIntercoolerTemperatureSensor();
         sendIntercoolerMessage(intercooler, !isnan(intercooler));
+        Serial.printf("[INTERCOOLER] %.1f C\n", intercooler);
       #endif
 
       // Note: Atmospheric sensor (BMP280) is on display MCU via I2C

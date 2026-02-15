@@ -19,8 +19,8 @@
 // ============================================================
 
 // TWAI (CAN) pins - directly connected to SN65HVD230 (right side)
-#define CAN_TX_PIN  6
-#define CAN_RX_PIN  7
+#define CAN_TX_PIN  7
+#define CAN_RX_PIN  6
 
 // Sensor pins (left side - matches Qualia perfboard layout)
 // SPI pins for MAX31855 EGT sensor
