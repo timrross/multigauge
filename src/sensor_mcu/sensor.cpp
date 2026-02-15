@@ -68,7 +68,7 @@ bool calibrateOilZero(uint16_t samples, uint32_t timeoutMs) {
 // ============================================================
 
 // Forward declaration
-void IRAM_ATTR oilSensorPWMInterrupt();
+void oilSensorPWMInterrupt();
 
 // State machine stages
 enum PulseStage : uint8_t {
