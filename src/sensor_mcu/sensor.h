@@ -4,24 +4,36 @@
 #include <Arduino.h>
 
 // ============================================================
-// Waveshare ESP32-C3-Zero Pin Assignments (GPIO 0-6 available)
+// Waveshare ESP32-C3-Zero Pin Assignments
+// ============================================================
+//
+// GPIO 0-5 (left side) match the Qualia perfboard pin order so the
+// sensor board plugs straight in without re-wiring:
+//
+//   Qualia pin:  GND  3.3V  A0   A1   CS   MOSI  MISO  SCK
+//   C3 GPIO:     GND  3.3V  0    1    2    3     4     5
+//   Function:                Boost ICT  EGT  Oil   EGT   EGT
+//                            ADC   ADC  CS   PWM   MISO  SCK
+//
+// CAN transceiver is on the other side of the board (GPIO 6-7).
 // ============================================================
 
-// TWAI (CAN) pins - directly connected to SN65HVD230
-#define CAN_TX_PIN  3
-#define CAN_RX_PIN  2
+// TWAI (CAN) pins - directly connected to SN65HVD230 (right side)
+#define CAN_TX_PIN  6
+#define CAN_RX_PIN  7
 
+// Sensor pins (left side - matches Qualia perfboard layout)
 // SPI pins for MAX31855 EGT sensor
 #define EGT_SCK_PIN   5
 #define EGT_MISO_PIN  4
-#define EGT_CS_PIN    6
+#define EGT_CS_PIN    2
 
 // Oil sensor PWM input (interrupt-capable)
-#define OIL_PRESSURE_PIN  1
+#define OIL_PRESSURE_PIN  3
 
 // Analog inputs
 #define BOOST_PRESSURE_PIN    0   // ADC1_CH0
-#define INTERCOOLER_TEMP_PIN  0   // Shared with boost (not enough pins for both)
+#define INTERCOOLER_TEMP_PIN  1   // ADC1_CH1
 
 // ============================================================
 // Sensor Configuration
