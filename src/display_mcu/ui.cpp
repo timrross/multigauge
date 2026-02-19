@@ -7,7 +7,7 @@
 #include "ui.h"
 
 // Image declarations (in assets folder)
-LV_IMG_DECLARE(gauge_bg);
+LV_IMG_DECLARE(gauge_active_v2);
 LV_IMG_DECLARE(needle);
 
 // Screens
@@ -16,16 +16,21 @@ lv_obj_t *gauge_screen = NULL;
 
 // UI elements
 lv_obj_t *needleImg;
-lv_obj_t *oilTempLabel;
-lv_obj_t *oilPressureLabel;
-lv_obj_t *egtLabel;
-lv_obj_t *intercoolerLabel;
+lv_obj_t *oilTempValue;
+lv_obj_t *oilPressureValue;
+lv_obj_t *egtValue;
+lv_obj_t *intercoolerValue;
 lv_obj_t *oilTempUnit;
 lv_obj_t *oilPressureUnit;
 lv_obj_t *egtUnit;
 lv_obj_t *intercoolerUnit;
 lv_obj_t *fps_label;
 lv_obj_t *connection_indicator;
+
+// View state
+static int current_view = 0;  // 0=grid, 1=oil press, 2=oil temp, 3=EGT, 4=intercooler
+static lv_obj_t *circle = NULL;
+static lv_obj_t *solo_value_label = NULL;
 
 // Last displayed values for change detection
 int boostPressure = -1;
@@ -56,27 +61,46 @@ void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valu
     styles_initialized = true;
   }
 
+  // Outer container fills the grid cell, uses flex column to vertically center content
   lv_obj_t *container = lv_obj_create(parent);
   lv_obj_set_grid_cell(container, LV_GRID_ALIGN_STRETCH, col, 1, LV_GRID_ALIGN_STRETCH, row, 1);
   lv_obj_set_style_border_width(container, 0, LV_PART_MAIN);
   lv_obj_set_style_radius(container, 0, LV_PART_MAIN);
   lv_obj_set_style_pad_all(container, 0, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(container, LV_OBJ_FLAG_EVENT_BUBBLE);
+  lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(container, 0, LV_PART_MAIN);
 
-  *valueLabel = lv_label_create(container);
-  lv_label_set_text(*valueLabel, "--");
-  lv_obj_add_style(*valueLabel, &style_value, 0);
-  lv_obj_align(*valueLabel, LV_ALIGN_LEFT_MID, 0, 10);
-
+  // Row 1: sensor name
   lv_obj_t *label = lv_label_create(container);
   lv_label_set_text(label, labelText);
   lv_obj_add_style(label, &style_label, 0);
-  lv_obj_align_to(label, *valueLabel, LV_ALIGN_OUT_TOP_LEFT, 0, 0);
 
-  *unitLabel = lv_label_create(container);
+  // Row 2: value + unit inline
+  lv_obj_t *val_row = lv_obj_create(container);
+  lv_obj_set_size(val_row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_opa(val_row, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(val_row, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(val_row, 0, LV_PART_MAIN);
+  lv_obj_set_flex_flow(val_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(val_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_column(val_row, 2, LV_PART_MAIN);
+  lv_obj_clear_flag(val_row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(val_row, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+  *valueLabel = lv_label_create(val_row);
+  lv_label_set_text(*valueLabel, "--");
+  lv_obj_add_style(*valueLabel, &style_value, 0);
+
+  *unitLabel = lv_label_create(val_row);
   lv_label_set_text(*unitLabel, unitText);
   lv_obj_add_style(*unitLabel, &style_units, 0);
-  lv_obj_align_to(*unitLabel, *valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3);
+  // Align to baseline: shift unit up by descent difference between value and unit fonts
+  int baseline_offset = lv_font_montserrat_34.base_line - lv_font_montserrat_18.base_line;
+  lv_obj_set_style_translate_y(*unitLabel, -baseline_offset, LV_PART_MAIN);
 }
 
 void create_fps_label(lv_obj_t *parent) {
@@ -116,6 +140,199 @@ void update_fps_label(lv_timer_t *timer) {
   char fps_text[16];
   snprintf(fps_text, sizeof(fps_text), "FPS: %u", (unsigned int)fps);
   lv_label_set_text(fps_label, fps_text);
+}
+
+// ============================================================
+// View Switching
+// ============================================================
+
+static lv_obj_t *content_wrap = NULL;
+static bool animating = false;
+
+#define SLIDE_ANIM_TIME 200
+#define SLIDE_DISTANCE  280
+
+static lv_obj_t *createContentWrap() {
+  lv_obj_t *wrap = lv_obj_create(circle);
+  lv_obj_set_size(wrap, LV_PCT(100), LV_PCT(100));
+  lv_obj_center(wrap);
+  lv_obj_set_style_bg_opa(wrap, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(wrap, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(wrap, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(wrap, LV_OBJ_FLAG_EVENT_BUBBLE);
+  return wrap;
+}
+
+static void createGridContent(lv_obj_t *parent) {
+  static lv_coord_t col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  lv_obj_t *grid = lv_obj_create(parent);
+  lv_obj_set_grid_dsc_array(grid, col_dsc, row_dsc);
+  lv_obj_set_size(grid, LV_PCT(80), LV_PCT(80));
+  lv_obj_set_style_border_width(grid, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(grid, 0, LV_PART_MAIN);
+  lv_obj_align(grid, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_pad_row(grid, 10, LV_PART_MAIN);
+  lv_obj_set_style_pad_column(grid, 10, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(grid, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(grid, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+  createSensorWidget(grid, "Oil Press.", &oilPressureValue, &oilPressureUnit, "bar", 0, 0);
+  createSensorWidget(grid, "Oil Temp.", &oilTempValue, &oilTempUnit, "°C", 1, 0);
+  createSensorWidget(grid, "EGT", &egtValue, &egtUnit, "°C", 0, 1);
+  createSensorWidget(grid, "Intake", &intercoolerValue, &intercoolerUnit, "°C", 1, 1);
+}
+
+static void createSoloContent(lv_obj_t *parent, int sensor_idx) {
+  static const char *names[] = {"Oil Pressure", "Oil Temp.", "EGT", "Intake"};
+  static const char *units[] = {"bar", "\xC2\xB0""C", "\xC2\xB0""C", "\xC2\xB0""C"};
+
+  lv_obj_t *container = lv_obj_create(parent);
+  lv_obj_set_size(container, LV_PCT(100), LV_PCT(100));
+  lv_obj_center(container);
+  lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(container, 0, LV_PART_MAIN);
+  lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(container, LV_OBJ_FLAG_EVENT_BUBBLE);
+  lv_obj_set_style_pad_row(container, 4, LV_PART_MAIN);
+
+  // Sensor name
+  lv_obj_t *name_label = lv_label_create(container);
+  lv_label_set_text(name_label, names[sensor_idx]);
+  lv_obj_set_style_text_color(name_label, lv_color_darken(lv_color_white(), 64), LV_PART_MAIN);
+  lv_obj_set_style_text_font(name_label, &lv_font_montserrat_24, LV_PART_MAIN);
+
+  // Value + unit row
+  lv_obj_t *row = lv_obj_create(container);
+  lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(row, 6, LV_PART_MAIN);
+  lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+  solo_value_label = lv_label_create(row);
+  lv_label_set_text(solo_value_label, "--");
+  lv_obj_set_style_text_color(solo_value_label, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_text_font(solo_value_label, &lv_font_montserrat_48, LV_PART_MAIN);
+
+  lv_obj_t *unit_label = lv_label_create(row);
+  lv_label_set_text(unit_label, units[sensor_idx]);
+  lv_obj_set_style_text_color(unit_label, lv_color_darken(lv_color_white(), 64), LV_PART_MAIN);
+  lv_obj_set_style_text_font(unit_label, &lv_font_montserrat_24, LV_PART_MAIN);
+  // Align to baseline: shift unit up by descent difference between value and unit fonts
+  int baseline_offset = lv_font_montserrat_48.base_line - lv_font_montserrat_24.base_line;
+  lv_obj_set_style_translate_y(unit_label, -baseline_offset, LV_PART_MAIN);
+}
+
+static void set_translate_x(void *obj, int32_t x) {
+  lv_obj_set_style_translate_x((lv_obj_t *)obj, x, LV_PART_MAIN);
+}
+
+static void slide_done_cb(lv_anim_t *a) {
+  animating = false;
+}
+
+static void switchView(int view, lv_dir_t dir) {
+  // Reset label pointers
+  oilTempValue = NULL;
+  oilPressureValue = NULL;
+  egtValue = NULL;
+  intercoolerValue = NULL;
+  oilTempUnit = NULL;
+  oilPressureUnit = NULL;
+  egtUnit = NULL;
+  intercoolerUnit = NULL;
+  solo_value_label = NULL;
+
+  // Reset change detection to force update on next data
+  lastOilPressureTenths = INT_MIN;
+  lastOilTemperatureC = INT_MIN;
+  lastEgtC = INT_MIN;
+  lastIntercoolerTemperatureC = INT_MIN;
+
+  // Stop any running animations on existing content before deleting
+  if (content_wrap != NULL) {
+    lv_anim_delete(content_wrap, set_translate_x);
+    lv_obj_del(content_wrap);
+    content_wrap = NULL;
+  }
+
+  // Create new content
+  content_wrap = createContentWrap();
+  if (view == 0) {
+    createGridContent(content_wrap);
+  } else {
+    createSoloContent(content_wrap, view - 1);
+  }
+
+  // No animation for initial creation
+  if (dir == LV_DIR_NONE) {
+    return;
+  }
+
+  // New content slides in from the swipe direction
+  int slide_from = (dir == LV_DIR_LEFT) ? SLIDE_DISTANCE : -SLIDE_DISTANCE;
+
+  animating = true;
+
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, content_wrap);
+  lv_anim_set_values(&a, slide_from, 0);
+  lv_anim_set_time(&a, SLIDE_ANIM_TIME);
+  lv_anim_set_exec_cb(&a, set_translate_x);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_completed_cb(&a, slide_done_cb);
+  lv_anim_start(&a);
+}
+
+static void gesture_event_cb(lv_event_t *e) {
+  if (animating) return;
+  lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+  if (dir == LV_DIR_LEFT) {
+    current_view = (current_view + 1) % 5;
+    switchView(current_view, dir);
+  } else if (dir == LV_DIR_RIGHT) {
+    current_view = (current_view + 4) % 5;
+    switchView(current_view, dir);
+  }
+}
+
+static void updateSoloView(const SensorData& data) {
+  if (solo_value_label == NULL) return;
+
+  double value;
+  switch (current_view) {
+    case 1: value = data.oilPressure; break;
+    case 2: value = data.oilTemperature; break;
+    case 3: value = data.egt; break;
+    case 4: value = data.intercoolerTemperature; break;
+    default: return;
+  }
+
+  if (isnan(value)) return;
+
+  char buf[16];
+  if (current_view == 1) {
+    // Oil pressure: one decimal place
+    int tenths = (int)lround(value * 10.0);
+    int whole = tenths / 10;
+    int frac = abs(tenths % 10);
+    snprintf(buf, sizeof(buf), "%d.%d", whole, frac);
+  } else {
+    snprintf(buf, sizeof(buf), "%d", (int)lround(value));
+  }
+
+  lv_label_set_text(solo_value_label, buf);
 }
 
 // ============================================================
@@ -164,7 +381,7 @@ void createGaugeScreen() {
 
   lv_obj_t *background = lv_image_create(gauge_screen);
   lv_obj_align(background, LV_ALIGN_CENTER, 0, 0);
-  lv_image_set_src(background, &gauge_bg);
+  lv_image_set_src(background, &gauge_active_v2);
   lv_obj_set_size(background, 480, 480);
 
   needleImg = lv_image_create(gauge_screen);
@@ -186,31 +403,19 @@ void createGaugeScreen() {
   lv_style_set_shadow_ofs_x(&style_circle, 0);
   lv_style_set_shadow_ofs_y(&style_circle, 0);
 
-  lv_obj_t *circle = lv_obj_create(gauge_screen);
+  circle = lv_obj_create(gauge_screen);
   lv_obj_add_style(circle, &style_circle, 0);
   lv_obj_set_size(circle, 280, 280);
   lv_obj_center(circle);
+  lv_obj_clear_flag(circle, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(circle, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-  // Create 2x2 grid
-  static lv_coord_t col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  lv_obj_t *grid = lv_obj_create(circle);
-  lv_obj_set_grid_dsc_array(grid, col_dsc, row_dsc);
-  lv_obj_set_size(grid, LV_PCT(80), LV_PCT(80));
-  lv_obj_set_style_border_width(grid, 0, LV_PART_MAIN);
-  lv_obj_set_style_radius(grid, 0, LV_PART_MAIN);
-  lv_obj_align(grid, LV_ALIGN_CENTER, 0, 0);
-  lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_pad_row(grid, 10, LV_PART_MAIN);
-  lv_obj_set_style_pad_column(grid, 10, LV_PART_MAIN);
-  lv_obj_set_style_pad_all(grid, 0, LV_PART_MAIN);
+  // Create initial grid view
+  content_wrap = createContentWrap();
+  createGridContent(content_wrap);
 
-  // Create sensor widgets
-  createSensorWidget(grid, "Oil Press.", &oilPressureLabel, &oilPressureUnit, "bar", 0, 0);
-  lv_obj_align_to(oilPressureUnit, oilPressureLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 25, -3);
-  createSensorWidget(grid, "Oil Temp.", &oilTempLabel, &oilTempUnit, "°C", 1, 0);
-  createSensorWidget(grid, "EGT", &egtLabel, &egtUnit, "°C", 0, 1);
-  createSensorWidget(grid, "Intake", &intercoolerLabel, &intercoolerUnit, "°C", 1, 1);
+  // Register gesture handler for swipe navigation
+  lv_obj_add_event_cb(gauge_screen, gesture_event_cb, LV_EVENT_GESTURE, NULL);
 
   create_fps_label(gauge_screen);
   create_connection_indicator(gauge_screen);
@@ -245,21 +450,20 @@ void setBoostPressure(double value) {
   }
 }
 
-static void setLabelValue(lv_obj_t *valueLabel, lv_obj_t *unitLabel, const char *value) {
-  if (valueLabel == NULL || unitLabel == NULL) return;
+static void setLabelValue(lv_obj_t *valueLabel, const char *value) {
+  if (valueLabel == NULL) return;
   lv_label_set_text(valueLabel, value);
-  lv_obj_align_to(unitLabel, valueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -3);
 }
 
 void setOilTemperature(double value) {
   #if ENABLE_OIL_SENSOR
     if (!isnan(value)) {
-      if (oilTempLabel == NULL || oilTempUnit == NULL) return;
+      if (oilTempValue == NULL) return;
       int rounded = (int)lround(value);
       if (lastOilTemperatureC != rounded) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", rounded);
-        setLabelValue(oilTempLabel, oilTempUnit, buf);
+        setLabelValue(oilTempValue, buf);
         lastOilTemperatureC = rounded;
       }
     }
@@ -269,15 +473,14 @@ void setOilTemperature(double value) {
 void setOilPressure(double value) {
   #if ENABLE_OIL_SENSOR
     if (!isnan(value)) {
-      if (oilPressureLabel == NULL || oilPressureUnit == NULL) return;
+      if (oilPressureValue == NULL) return;
       int tenths = (int)lround(value * 10.0);
       if (lastOilPressureTenths != tenths) {
         char buf[16];
         int whole = tenths / 10;
         int frac = abs(tenths % 10);
         snprintf(buf, sizeof(buf), "%d.%d", whole, frac);
-        lv_label_set_text(oilPressureLabel, buf);
-        lv_obj_align_to(oilPressureUnit, oilPressureLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 26, -3);
+        setLabelValue(oilPressureValue, buf);
         lastOilPressureTenths = tenths;
       }
     }
@@ -287,12 +490,12 @@ void setOilPressure(double value) {
 void setEgt(double value) {
   #if ENABLE_EGT_SENSOR
     if (!isnan(value)) {
-      if (egtLabel == NULL || egtUnit == NULL) return;
+      if (egtValue == NULL) return;
       int rounded = (int)lround(value);
       if (lastEgtC != rounded) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", rounded);
-        setLabelValue(egtLabel, egtUnit, buf);
+        setLabelValue(egtValue, buf);
         lastEgtC = rounded;
       }
     }
@@ -302,12 +505,12 @@ void setEgt(double value) {
 void setIntercoolerTemperature(double value) {
   #if ENABLE_INTERCOOLER_SENSOR
     if (!isnan(value)) {
-      if (intercoolerLabel == NULL || intercoolerUnit == NULL) return;
+      if (intercoolerValue == NULL) return;
       int rounded = (int)lround(value);
       if (lastIntercoolerTemperatureC != rounded) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", rounded);
-        setLabelValue(intercoolerLabel, intercoolerUnit, buf);
+        setLabelValue(intercoolerValue, buf);
         lastIntercoolerTemperatureC = rounded;
       }
     }
@@ -321,24 +524,30 @@ void updateUI(const SensorData& data) {
     }
   #endif
 
-  #if ENABLE_OIL_SENSOR
-    if (!isnan(data.oilTemperature)) {
-      setOilTemperature(data.oilTemperature);
-    }
-    if (!isnan(data.oilPressure)) {
-      setOilPressure(data.oilPressure);
-    }
-  #endif
+  if (current_view == 0) {
+    // Grid view: update all sensor labels
+    #if ENABLE_OIL_SENSOR
+      if (!isnan(data.oilTemperature)) {
+        setOilTemperature(data.oilTemperature);
+      }
+      if (!isnan(data.oilPressure)) {
+        setOilPressure(data.oilPressure);
+      }
+    #endif
 
-  #if ENABLE_EGT_SENSOR
-    if (!isnan(data.egt)) {
-      setEgt(data.egt);
-    }
-  #endif
+    #if ENABLE_EGT_SENSOR
+      if (!isnan(data.egt)) {
+        setEgt(data.egt);
+      }
+    #endif
 
-  #if ENABLE_INTERCOOLER_SENSOR
-    if (!isnan(data.intercoolerTemperature)) {
-      setIntercoolerTemperature(data.intercoolerTemperature);
-    }
-  #endif
+    #if ENABLE_INTERCOOLER_SENSOR
+      if (!isnan(data.intercoolerTemperature)) {
+        setIntercoolerTemperature(data.intercoolerTemperature);
+      }
+    #endif
+  } else {
+    // Solo view: update the displayed sensor
+    updateSoloView(data);
+  }
 }

@@ -2,6 +2,7 @@
 #include <lvgl.h>
 #include "sensor_types.h"
 #include "display.h"
+#include "touch.h"
 #include "ui.h"
 #include "can_rx.h"
 

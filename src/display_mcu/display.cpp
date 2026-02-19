@@ -1,26 +1,7 @@
 #include <Arduino_GFX_Library.h>
 #include <Wire.h>
-#include <TAMC_GT911.h>
 #include <lvgl.h>
 #include "display.h"
-
-#ifndef TOUCH_INT_PIN
-  #define TOUCH_INT_PIN 0
-#endif
-
-#ifndef TOUCH_RST_PIN
-  #define TOUCH_RST_PIN 0
-#endif
-
-#ifndef GT911_I2C_ADDR
-  #define GT911_I2C_ADDR 0x14
-#endif
-
-#ifndef TOUCH_ROTATION
-  #define TOUCH_ROTATION ROTATION_INVERTED
-#endif
-
-static constexpr uint8_t kTouchMaxPoints = 5;
 
 // TFT init/reset SPI is via the Qualia's IO expander (XCA9554).
 Arduino_XCA9554SWSPI *expander = new Arduino_XCA9554SWSPI(
@@ -43,15 +24,6 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
   TFT_HOR_RES /* width */, TFT_VER_RES /* height */, rgbpanel, 0 /* rotation */, true /* auto_flush */,
   expander, GFX_NOT_DEFINED /* RST */, TL021WVC02_init_operations, sizeof(TL021WVC02_init_operations)
 );
-
-TAMC_GT911 tp(
-  SDA, SCL,
-  TOUCH_INT_PIN,
-  TOUCH_RST_PIN,
-  TFT_HOR_RES, TFT_VER_RES
-);
-
-static lv_indev_t *touch_indev = NULL;
 
 // Frame counter for FPS measurement
 static volatile uint32_t flush_count = 0;
@@ -92,42 +64,6 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
   lv_disp_flush_ready(disp);
 }
 
-static inline int16_t clamp_coord(int16_t value, int16_t max_value) {
-  if (value < 0) return 0;
-  if (value >= max_value) return max_value - 1;
-  return value;
-}
-
-static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
-  (void)indev;
-  tp.read();
-
-  int16_t touch_x[kTouchMaxPoints];
-  int16_t touch_y[kTouchMaxPoints];
-  uint8_t touch_count = 0;
-
-  if (tp.isTouched && tp.touches > 0) {
-    touch_count = tp.touches;
-    if (touch_count > kTouchMaxPoints) {
-      touch_count = kTouchMaxPoints;
-    }
-
-    for (uint8_t i = 0; i < touch_count; i++) {
-      int16_t x = clamp_coord(tp.points[i].x, TFT_HOR_RES);
-      int16_t y = clamp_coord(tp.points[i].y, TFT_VER_RES);
-      touch_x[i] = x;
-      touch_y[i] = y;
-
-    }
-
-    data->state = LV_INDEV_STATE_PRESSED;
-    data->point.x = touch_x[0];
-    data->point.y = touch_y[0];
-  } else {
-    data->state = LV_INDEV_STATE_RELEASED;
-  }
-}
-
 void initDisplay() {
   #ifdef GFX_EXTRA_PRE_INIT
     GFX_EXTRA_PRE_INIT();
@@ -150,19 +86,6 @@ void initDisplay() {
   #ifdef TFT_BL
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, HIGH);
-  #endif
-}
-
-void initTouch() {
-  tp.begin(GT911_I2C_ADDR);
-  tp.setRotation(TOUCH_ROTATION);
-
-  touch_indev = lv_indev_create();
-  lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
-  lv_indev_set_read_cb(touch_indev, touch_read_cb);
-
-  #if DEBUG
-    Serial.println("GT911 touch ready at 0x14");
   #endif
 }
 

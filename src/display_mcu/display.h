@@ -12,7 +12,6 @@
 
 void initDisplay();
 void initLVGL();
-void initTouch();
 uint32_t getAndResetFlushCount();
 
 #endif // DISPLAY_H
