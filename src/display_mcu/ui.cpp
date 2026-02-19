@@ -195,19 +195,11 @@ static void createSoloContent(lv_obj_t *parent, int sensor_idx) {
   lv_obj_center(container);
   lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, LV_PART_MAIN);
   lv_obj_set_style_border_width(container, 0, LV_PART_MAIN);
-  lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(container, 0, LV_PART_MAIN);
   lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(container, LV_OBJ_FLAG_EVENT_BUBBLE);
-  lv_obj_set_style_pad_row(container, 4, LV_PART_MAIN);
 
-  // Sensor name
-  lv_obj_t *name_label = lv_label_create(container);
-  lv_label_set_text(name_label, names[sensor_idx]);
-  lv_obj_set_style_text_color(name_label, lv_color_darken(lv_color_white(), 64), LV_PART_MAIN);
-  lv_obj_set_style_text_font(name_label, &lv_font_montserrat_24, LV_PART_MAIN);
-
-  // Value + unit row
+  // Value + unit row anchored at absolute center
   lv_obj_t *row = lv_obj_create(container);
   lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
   lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
@@ -218,6 +210,7 @@ static void createSoloContent(lv_obj_t *parent, int sensor_idx) {
   lv_obj_set_style_pad_column(row, 6, LV_PART_MAIN);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+  lv_obj_align(row, LV_ALIGN_CENTER, 0, 0);
 
   solo_value_label = lv_label_create(row);
   lv_label_set_text(solo_value_label, "--");
@@ -231,6 +224,13 @@ static void createSoloContent(lv_obj_t *parent, int sensor_idx) {
   // Align to baseline: shift unit up by descent difference between value and unit fonts
   int baseline_offset = lv_font_montserrat_48.base_line - lv_font_montserrat_24.base_line;
   lv_obj_set_style_translate_y(unit_label, -baseline_offset, LV_PART_MAIN);
+
+  // Sensor name positioned above the centered value row
+  lv_obj_t *name_label = lv_label_create(container);
+  lv_label_set_text(name_label, names[sensor_idx]);
+  lv_obj_set_style_text_color(name_label, lv_color_darken(lv_color_white(), 64), LV_PART_MAIN);
+  lv_obj_set_style_text_font(name_label, &lv_font_montserrat_24, LV_PART_MAIN);
+  lv_obj_align_to(name_label, row, LV_ALIGN_OUT_TOP_MID, 0, -4);
 }
 
 static void set_translate_x(void *obj, int32_t x) {
