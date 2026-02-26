@@ -150,7 +150,7 @@ static lv_obj_t *content_wrap = NULL;
 static bool animating = false;
 
 #define SLIDE_ANIM_TIME 200
-#define SLIDE_DISTANCE  280
+#define SLIDE_DISTANCE  100
 
 static lv_obj_t *createContentWrap() {
   lv_obj_t *wrap = lv_obj_create(circle);
