@@ -36,16 +36,37 @@ bool initCAN() {
 
 // Helper to transmit a CAN message
 static bool transmitMessage(uint32_t id, const void* data, uint8_t len) {
-  twai_message_t message;
+  // Zero-initialize to ensure ss/self/dlc_non_comp flag bits are not garbage.
+  // Uninitialized flags can set self-reception mode (loopback), causing the
+  // RX queue to fill with our own frames.
+  twai_message_t message = {};
   message.identifier = id;
   message.extd = 0;  // Standard 11-bit ID
   message.rtr = 0;   // Not a remote frame
   message.data_length_code = len;
   memcpy(message.data, data, len);
 
-  // Queue message for transmission (non-blocking, 0 ticks timeout)
+  // Queue message for transmission (non-blocking, 10ms timeout)
   esp_err_t result = twai_transmit(&message, pdMS_TO_TICKS(10));
   return (result == ESP_OK);
+}
+
+void maintainCAN() {
+  // The TWAI peripheral enters BUS_OFF after 32 consecutive TX errors
+  // (e.g. no ACK from receiver). In BUS_OFF, all transmission stops.
+  // initiate_recovery() triggers the mandatory 128-recessive-bit sequence
+  // after which the hardware automatically returns to RUNNING state.
+  twai_status_info_t status;
+  if (twai_get_status_info(&status) != ESP_OK) return;
+
+  if (status.state == TWAI_STATE_BUS_OFF) {
+    Serial.println("[CAN] BUS_OFF detected — initiating recovery");
+    if (twai_initiate_recovery() == ESP_OK) {
+      Serial.println("[CAN] Recovery initiated, waiting for bus...");
+    } else {
+      Serial.println("[CAN] Recovery failed to initiate");
+    }
+  }
 }
 
 void sendBoostMessage(double boost_psi, bool valid) {

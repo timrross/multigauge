@@ -41,36 +41,40 @@ void Task_Read_Sensors(void *pvParameters) {
   uint32_t cycle = 0;
 
   while (1) {
-    // Oil sensor - every 500ms (every cycle)
+    // Oil sensors — every 500ms (every cycle)
     #if ENABLE_OIL_SENSOR
       OilStatusData oilData = readOilSensor();
+      bool oilValid = !isnan(oilData.oilTemperature) && !isnan(oilData.oilPressure);
       sendOilMessage(
         oilData.oilTemperature,
         oilData.oilPressure,
-        oilData.oilSensorStatus,
-        oilData.oilSensorStatus == 1
+        oilValid ? OIL_STATUS_OK : OIL_STATUS_TIMEOUT,
+        oilValid
       );
-      Serial.printf("[OIL] status=%u  temp=%.1f C  pressure=%.2f bar\n",
-        oilData.oilSensorStatus, oilData.oilTemperature, oilData.oilPressure);
+      if (oilValid) {
+        Serial.printf("[OIL] temp=%.1f C  pressure=%.2f bar\n",
+          oilData.oilTemperature, oilData.oilPressure);
+      } else {
+        Serial.println("[OIL] sensor invalid");
+      }
     #endif
 
-    // EGT sensor - every 500ms (every cycle)
+    // EGT sensor — every 500ms (every cycle)
     #if ENABLE_EGT_SENSOR
       double egt = readEgtSensor();
       sendEgtMessage(egt, !isnan(egt));
       Serial.printf("[EGT] %.1f C\n", egt);
     #endif
 
-    // Slower sensors - every 1000ms (every other cycle)
+    // Slower sensors — every 1000ms (every other cycle)
     if (cycle % 2 == 0) {
       #if ENABLE_INTERCOOLER_SENSOR
-        double intercooler = readIntercoolerTemperatureSensor();
-        sendIntercoolerMessage(intercooler, !isnan(intercooler));
-        Serial.printf("[INTERCOOLER] %.1f C\n", intercooler);
+        double intake = readIntercoolerTemperatureSensor();
+        sendIntercoolerMessage(intake, !isnan(intake));
+        Serial.printf("[INTAKE] %.1f C\n", intake);
       #endif
 
       // Note: Atmospheric sensor (BMP280) is on display MCU via I2C
-      // If enabled, display MCU reads it directly - no CAN message needed
     }
 
     cycle++;
@@ -85,6 +89,7 @@ void Task_Read_Sensors(void *pvParameters) {
 void Task_Heartbeat(void *pvParameters) {
   while (1) {
     sendHeartbeat();
+    maintainCAN();  // Detect and recover from BUS_OFF (e.g. display not yet powered)
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
@@ -104,50 +109,30 @@ void setup() {
   }
   Serial.println("CAN initialized at 500 kbit/s");
 
-  // Initialize sensors
+  // Initialize sensors (ADS1115 + MAX31855)
   initSensors();
   Serial.println("Sensors initialized");
 
-  // Calibrate oil sensor ambient pressure
-  #if ENABLE_OIL_SENSOR
-    Serial.println("Calibrating oil sensor ambient (engine off)...");
-    delay(300);
-    bool oilCalOK = calibrateOilZero(64, 2000);
-    if (oilCalOK) {
-      Serial.printf("Oil ambient baseline: %.3f bar\n", getOilAmbientBar());
-    } else {
-      Serial.println("Oil calibration failed; using fallback (0.5 bar)");
-    }
-  #endif
+  // Create FreeRTOS tasks — halt on creation failure so the fault is obvious
+  // rather than silently missing CAN frames or heartbeats.
+  // ESP32-C3 is single-core, so no core pinning needed.
+  if (xTaskCreate(Task_Read_Boost, "Task_Boost", 2048, NULL, 2,
+                  &taskBoostHandle) != pdPASS) {
+    Serial.println("FATAL: failed to create Task_Boost");
+    while (1) delay(1000);
+  }
 
-  // Create FreeRTOS tasks
-  // ESP32-C3 is single-core, so no core pinning needed
-  xTaskCreate(
-    Task_Read_Boost,
-    "Task_Boost",
-    2048,
-    NULL,
-    2,  // Higher priority for boost (fast updates)
-    &taskBoostHandle
-  );
+  if (xTaskCreate(Task_Read_Sensors, "Task_Sensors", 4096, NULL, 1,
+                  &taskSensorsHandle) != pdPASS) {
+    Serial.println("FATAL: failed to create Task_Sensors");
+    while (1) delay(1000);
+  }
 
-  xTaskCreate(
-    Task_Read_Sensors,
-    "Task_Sensors",
-    4096,  // Larger stack for oil sensor ISR processing
-    NULL,
-    1,
-    &taskSensorsHandle
-  );
-
-  xTaskCreate(
-    Task_Heartbeat,
-    "Task_Heartbeat",
-    1024,
-    NULL,
-    0,  // Lowest priority
-    &taskHeartbeatHandle
-  );
+  if (xTaskCreate(Task_Heartbeat, "Task_Heartbeat", 1024, NULL, 0,
+                  &taskHeartbeatHandle) != pdPASS) {
+    Serial.println("FATAL: failed to create Task_Heartbeat");
+    while (1) delay(1000);
+  }
 
   Serial.println("Tasks started");
 }

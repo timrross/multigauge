@@ -6,7 +6,7 @@
 
 // Sensor enable flags (both MCUs need to agree)
 #define ENABLE_BOOST_SENSOR true
-#define ENABLE_INTERCOOLER_SENSOR false
+#define ENABLE_INTERCOOLER_SENSOR true
 #define ENABLE_EGT_SENSOR true
 #define ENABLE_OIL_SENSOR true
 
@@ -18,11 +18,8 @@
 #define PSI_BAR_CONVERSION 14.5038
 
 // Oil sensor status codes
-#define OIL_STATUS_TIMEOUT    0
-#define OIL_STATUS_OK         1
-#define OIL_STATUS_PRESS_FAIL 2
-#define OIL_STATUS_TEMP_FAIL  3
-#define OIL_STATUS_HW_FAIL    4
+#define OIL_STATUS_TIMEOUT  0  // No valid reading (sensor fault, open circuit, etc.)
+#define OIL_STATUS_OK       1  // Both pressure and temperature readings valid
 
 // Sensor data structure (for local use on display MCU)
 struct SensorData {
