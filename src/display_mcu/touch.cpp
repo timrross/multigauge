@@ -28,10 +28,16 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     Wire.beginTransmission(CST826_I2C_ADDR);
     Wire.write(CST826_REG_TOUCH_DATA);
     Wire.endTransmission(false);
-    uint8_t buf[6];
+    uint8_t buf[6] = {0};
+    int got = 0;
     Wire.requestFrom((uint8_t)CST826_I2C_ADDR, (uint8_t)6);
-    for (int i = 0; i < 6 && Wire.available(); i++) {
-      buf[i] = Wire.read();
+    while (got < 6 && Wire.available()) {
+      buf[got++] = Wire.read();
+    }
+    if (got < 4) {
+      // I2C read failed: do not invent a touch from stale bytes
+      data->state = LV_INDEV_STATE_RELEASED;
+      return;
     }
 
     int16_t x = ((buf[0] & 0x0F) << 8) | buf[1];

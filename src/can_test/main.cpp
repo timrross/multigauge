@@ -87,7 +87,7 @@ void loop() {
   // Print driver status
   twai_status_info_t status;
   if (twai_get_status_info(&status) == ESP_OK) {
-    Serial.printf("  Bus: %s | TX ok:%lu err:%lu | RX ok:%lu miss:%lu\n",
+    Serial.printf("  Bus: %s | TX queued:%lu TX errors:%lu | RX queued:%lu RX errors:%lu\n",
                   status.state == TWAI_STATE_RUNNING ? "RUNNING" :
                   status.state == TWAI_STATE_BUS_OFF ? "BUS_OFF" : "ERROR",
                   status.msgs_to_tx, status.tx_error_counter,

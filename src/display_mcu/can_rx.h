@@ -12,9 +12,15 @@
 // Initialize TWAI (CAN) peripheral for receiving
 bool initCAN();
 
-// Check for and process incoming CAN messages
-// Returns true if any message was received
+// Check for and process incoming CAN messages, and blank (NAN) any value that is
+// invalid or has stopped arriving. Returns true if any message was received.
 bool processCANMessages(SensorData* data);
+
+// Call about once a second. Brings the bus back after a bus-off or a stop.
+void maintainCAN();
+
+// HB_FAULT_* bits from the sensor node's latest heartbeat
+uint8_t getSensorFaultFlags();
 
 // Get last received heartbeat counter
 uint8_t getLastHeartbeatCounter();

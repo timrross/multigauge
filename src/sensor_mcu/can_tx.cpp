@@ -34,6 +34,8 @@ bool initCAN() {
   return true;
 }
 
+static uint32_t txFailCount = 0;
+
 // Helper to transmit a CAN message
 static bool transmitMessage(uint32_t id, const void* data, uint8_t len) {
   // Zero-initialize to ensure ss/self/dlc_non_comp flag bits are not garbage.
@@ -46,61 +48,72 @@ static bool transmitMessage(uint32_t id, const void* data, uint8_t len) {
   message.data_length_code = len;
   memcpy(message.data, data, len);
 
-  // Queue message for transmission (non-blocking, 10ms timeout)
-  esp_err_t result = twai_transmit(&message, pdMS_TO_TICKS(10));
-  return (result == ESP_OK);
+  // Queue message for transmission (10ms timeout). This fails when the queue
+  // is full (nothing on the bus is acknowledging) or the driver is not running.
+  if (twai_transmit(&message, pdMS_TO_TICKS(10)) != ESP_OK) {
+    txFailCount++;
+    return false;
+  }
+  return true;
+}
+
+uint32_t canTxFailCount() {
+  return txFailCount;
 }
 
 void maintainCAN() {
-  // The TWAI peripheral enters BUS_OFF after 32 consecutive TX errors
-  // (e.g. no ACK from receiver). In BUS_OFF, all transmission stops.
-  // initiate_recovery() triggers the mandatory 128-recessive-bit sequence
-  // after which the hardware automatically returns to RUNNING state.
+  // With no other node on the bus, frames are never acknowledged. That alone only
+  // takes the controller to error-passive (it keeps retrying and the TX queue fills).
+  // Real bus faults (shorted or swapped wires, wrong bitrate) take it to BUS_OFF.
+  //
+  // Recovery is two steps: twai_initiate_recovery() runs the 128 x 11 recessive bit
+  // sequence and then leaves the driver STOPPED, so it must be started again.
+  static twai_state_t lastState = TWAI_STATE_RUNNING;
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return;
 
+  if (status.state != lastState) {
+    static const char* const names[] = { "STOPPED", "RUNNING", "BUS_OFF", "RECOVERING" };
+    Serial.printf("[CAN] state %s (tx errors %lu, rx errors %lu, tx failed %lu)\n",
+                  status.state <= TWAI_STATE_RECOVERING ? names[status.state] : "?",
+                  (unsigned long)status.tx_error_counter, (unsigned long)status.rx_error_counter,
+                  (unsigned long)txFailCount);
+    lastState = status.state;
+  }
+
   if (status.state == TWAI_STATE_BUS_OFF) {
-    Serial.println("[CAN] BUS_OFF detected — initiating recovery");
-    if (twai_initiate_recovery() == ESP_OK) {
-      Serial.println("[CAN] Recovery initiated, waiting for bus...");
-    } else {
-      Serial.println("[CAN] Recovery failed to initiate");
-    }
+    twai_initiate_recovery();
+  } else if (status.state == TWAI_STATE_STOPPED) {
+    twai_start();
   }
 }
 
-void sendBoostMessage(double boost_psi, bool valid) {
-  CanMsgBoost msg = {0};
-  encodeBoostMsg(&msg, boost_psi, valid);
+void sendBoostMessage(const Reading& boost) {
+  CanMsgBoost msg = {};
+  encodeBoostMsg(&msg, boost.value, boost.fault);
   transmitMessage(CAN_ID_BOOST, &msg, sizeof(msg));
 }
 
-void sendOilMessage(double temp_c, double pressure_bar, uint8_t oil_status, bool valid) {
-  CanMsgOil msg = {0};
-  encodeOilMsg(&msg, temp_c, pressure_bar, oil_status, valid);
+void sendOilMessage(const Reading& temp, const Reading& pressure) {
+  CanMsgOil msg = {};
+  encodeOilMsg(&msg, temp.value, temp.fault, pressure.value, pressure.fault);
   transmitMessage(CAN_ID_OIL, &msg, sizeof(msg));
 }
 
-void sendEgtMessage(double temp_c, bool valid) {
-  CanMsgEgt msg = {0};
-  encodeEgtMsg(&msg, temp_c, valid);
+void sendEgtMessage(const Reading& egt) {
+  CanMsgEgt msg = {};
+  encodeEgtMsg(&msg, egt.value, egt.fault);
   transmitMessage(CAN_ID_EGT, &msg, sizeof(msg));
 }
 
-void sendIntercoolerMessage(double temp_c, bool valid) {
-  CanMsgIntercooler msg = {0};
-  encodeIntercoolerMsg(&msg, temp_c, valid);
+void sendIntercoolerMessage(const Reading& temp) {
+  CanMsgIntercooler msg = {};
+  encodeIntercoolerMsg(&msg, temp.value, temp.fault);
   transmitMessage(CAN_ID_INTERCOOLER, &msg, sizeof(msg));
 }
 
-void sendAtmosMessage(double pressure_pa, double temp_c, bool valid) {
-  CanMsgAtmos msg = {0};
-  encodeAtmosMsg(&msg, pressure_pa, temp_c, valid);
-  transmitMessage(CAN_ID_ATMOS, &msg, sizeof(msg));
-}
-
-void sendHeartbeat() {
-  CanMsgHeartbeat msg = {0};
-  encodeHeartbeatMsg(&msg, heartbeatCounter++, millis());
+void sendHeartbeat(uint8_t faultFlags) {
+  CanMsgHeartbeat msg = {};
+  encodeHeartbeatMsg(&msg, heartbeatCounter++, millis(), faultFlags);
   transmitMessage(CAN_ID_HEARTBEAT, &msg, sizeof(msg));
 }

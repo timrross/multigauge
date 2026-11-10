@@ -32,12 +32,30 @@ static int current_view = 0;  // 0=grid, 1=oil press, 2=oil temp, 3=EGT, 4=inter
 static lv_obj_t *circle = NULL;
 static lv_obj_t *solo_value_label = NULL;
 
+// Ghost needle (peak boost indicator)
+static lv_obj_t *ghostNeedleImg = NULL;
+static int peakMbar = 0;
+static unsigned long peakTimestamp = 0;
+static int ghostAngle = 1350;
+#define PEAK_HOLD_MS 5000
+// Below this the "peak" is just ADC noise at idle; keep the ghost hidden
+// rather than drawing it under the resting needle.
+#define GHOST_MIN_MBAR 50
+
 // Last displayed values for change detection
 int boostPressure = -1;
-int lastOilPressureTenths = INT_MIN;
-int lastOilTemperatureC = INT_MIN;
-int lastEgtC = INT_MIN;
-int lastIntercoolerTemperatureC = INT_MIN;
+// One entry per numeric readout. The order matches the solo views (current_view - 1).
+enum { SENSOR_OIL_PRESSURE = 0, SENSOR_OIL_TEMP, SENSOR_EGT, SENSOR_INTAKE, SENSOR_COUNT };
+#define FORCE_REDRAW    INT_MIN         // nothing drawn yet for this label
+#define NO_VALUE_SHOWN  (INT_MIN + 1)   // "--" is on screen
+static int lastShown[SENSOR_COUNT] = { FORCE_REDRAW, FORCE_REDRAW, FORCE_REDRAW, FORCE_REDRAW };
+static int8_t lastWarn[SENSOR_COUNT] = { -1, -1, -1, -1 };  // -1 unknown, 0 normal, 1 warning
+
+// Warning thresholds: the number turns red beyond these. Tune them to the engine.
+#define WARN_OIL_PRESSURE_LOW_BAR  0.8    // also red with the engine off, like an oil light
+#define WARN_OIL_TEMP_HIGH_C       130.0
+#define WARN_EGT_HIGH_C            700.0
+#define WARN_COLOUR                0xFF2020
 
 void createSensorWidget(lv_obj_t *parent, const char *labelText, lv_obj_t **valueLabel, lv_obj_t **unitLabel, const char *unitText, int col, int row) {
   static lv_style_t style_label;
@@ -128,6 +146,10 @@ void create_connection_indicator(lv_obj_t *parent) {
 
 void setConnectionStatus(bool connected) {
   if (connection_indicator == NULL) return;
+  // Setting a style forces a redraw, so only do it when the state changes.
+  static int8_t lastConnected = -1;
+  if (lastConnected == (connected ? 1 : 0)) return;
+  lastConnected = connected ? 1 : 0;
   if (connected) {
     lv_obj_set_style_bg_color(connection_indicator, lv_color_hex(0x00FF00), LV_PART_MAIN);
   } else {
@@ -254,10 +276,10 @@ static void switchView(int view, lv_dir_t dir) {
   solo_value_label = NULL;
 
   // Reset change detection to force update on next data
-  lastOilPressureTenths = INT_MIN;
-  lastOilTemperatureC = INT_MIN;
-  lastEgtC = INT_MIN;
-  lastIntercoolerTemperatureC = INT_MIN;
+  for (int i = 0; i < SENSOR_COUNT; i++) {
+    lastShown[i] = FORCE_REDRAW;
+    lastWarn[i] = -1;
+  }
 
   // Stop any running animations on existing content before deleting
   if (content_wrap != NULL) {
@@ -307,32 +329,54 @@ static void gesture_event_cb(lv_event_t *e) {
   }
 }
 
-static void updateSoloView(const SensorData& data) {
-  if (solo_value_label == NULL) return;
-
-  double value;
-  switch (current_view) {
-    case 1: value = data.oilPressure; break;
-    case 2: value = data.oilTemperature; break;
-    case 3: value = data.egt; break;
-    case 4: value = data.intercoolerTemperature; break;
-    default: return;
+static bool isWarning(int sensor, double value) {
+  if (isnan(value)) return false;
+  switch (sensor) {
+    case SENSOR_OIL_PRESSURE: return value < WARN_OIL_PRESSURE_LOW_BAR;
+    case SENSOR_OIL_TEMP:     return value > WARN_OIL_TEMP_HIGH_C;
+    case SENSOR_EGT:          return value > WARN_EGT_HIGH_C;
+    default:                  return false;
   }
+}
 
-  if (isnan(value)) return;
+// Show a reading on a label: "--" when there is no valid value (NAN), red when it
+// is past its warning threshold. Only touches LVGL when what is shown changes.
+static void showSensorValue(lv_obj_t *label, int sensor, double value) {
+  if (label == NULL) return;
 
   char buf[16];
-  if (current_view == 1) {
+  int key;
+  if (isnan(value)) {
+    snprintf(buf, sizeof(buf), "--");
+    key = NO_VALUE_SHOWN;
+  } else if (sensor == SENSOR_OIL_PRESSURE) {
     // Oil pressure: one decimal place
-    int tenths = (int)lround(value * 10.0);
-    int whole = tenths / 10;
-    int frac = abs(tenths % 10);
-    snprintf(buf, sizeof(buf), "%d.%d", whole, frac);
+    key = (int)lround(value * 10.0);
+    snprintf(buf, sizeof(buf), "%d.%d", key / 10, abs(key % 10));
   } else {
-    snprintf(buf, sizeof(buf), "%d", (int)lround(value));
+    key = (int)lround(value);
+    snprintf(buf, sizeof(buf), "%d", key);
+  }
+  if (key != lastShown[sensor]) {
+    lv_label_set_text(label, buf);
+    lastShown[sensor] = key;
   }
 
-  lv_label_set_text(solo_value_label, buf);
+  int8_t warn = isWarning(sensor, value) ? 1 : 0;
+  if (warn != lastWarn[sensor]) {
+    lv_obj_set_style_text_color(label, warn ? lv_color_hex(WARN_COLOUR) : lv_color_white(), LV_PART_MAIN);
+    lastWarn[sensor] = warn;
+  }
+}
+
+static void updateSoloView(const SensorData& data) {
+  switch (current_view) {
+    case 1: showSensorValue(solo_value_label, SENSOR_OIL_PRESSURE, data.oilPressure); break;
+    case 2: showSensorValue(solo_value_label, SENSOR_OIL_TEMP, data.oilTemperature); break;
+    case 3: showSensorValue(solo_value_label, SENSOR_EGT, data.egt); break;
+    case 4: showSensorValue(solo_value_label, SENSOR_INTAKE, data.intercoolerTemperature); break;
+    default: break;
+  }
 }
 
 // ============================================================
@@ -384,6 +428,14 @@ void createGaugeScreen() {
   lv_image_set_src(background, &gauge_active_v2);
   lv_obj_set_size(background, 480, 480);
 
+  ghostNeedleImg = lv_image_create(gauge_screen);
+  lv_image_set_src(ghostNeedleImg, &needle);
+  lv_obj_align(ghostNeedleImg, LV_ALIGN_CENTER, 116, 0);
+  lv_image_set_pivot(ghostNeedleImg, 3, 10);
+  lv_image_set_rotation(ghostNeedleImg, 1350);
+  lv_obj_set_style_image_opa(ghostNeedleImg, LV_OPA_40, LV_PART_MAIN);
+  lv_obj_add_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
+
   needleImg = lv_image_create(gauge_screen);
   lv_image_set_src(needleImg, &needle);
   lv_obj_align(needleImg, LV_ALIGN_CENTER, 116, 0);
@@ -434,12 +486,44 @@ void initUI() {
   createGaugeScreen();
 }
 
+static void updatePeakBoost(int mbar) {
+  unsigned long now = millis();
+  if (mbar >= peakMbar) {
+    peakMbar = mbar;
+    peakTimestamp = now;
+  } else if (now - peakTimestamp >= PEAK_HOLD_MS) {
+    peakMbar = mbar;
+    peakTimestamp = now;
+  }
+}
+
+static void updateGhostNeedle() {
+  if (ghostNeedleImg == NULL) return;
+  if (peakMbar < GHOST_MIN_MBAR) {
+    if (!lv_obj_has_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN)) {
+      lv_obj_add_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
+    }
+    return;
+  }
+  if (lv_obj_has_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN)) {
+    lv_obj_clear_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
+  }
+  int angle = 1350 + (int)((peakMbar * 2700.0) / 2000.0);
+  if (angle != ghostAngle) {
+    lv_image_set_rotation(ghostNeedleImg, angle);
+    ghostAngle = angle;
+  }
+}
+
 void setBoostPressure(double value) {
   if (needleImg == NULL) return;
 
-  int mbar = (int)(value / PSI_BAR_CONVERSION * 1000);
+  // No valid reading (NAN): drop the needle to zero rather than leave it frozen.
+  int mbar = isnan(value) ? 0 : (int)(value / PSI_BAR_CONVERSION * 1000);
   if (mbar < 0) mbar = 0;
   if (mbar > 2000) mbar = 2000;
+  updatePeakBoost(mbar);
+  updateGhostNeedle();
   if (boostPressure >= 0 && abs(mbar - boostPressure) < 5) {
     return;
   }
@@ -450,102 +534,43 @@ void setBoostPressure(double value) {
   }
 }
 
-static void setLabelValue(lv_obj_t *valueLabel, const char *value) {
-  if (valueLabel == NULL) return;
-  lv_label_set_text(valueLabel, value);
-}
-
 void setOilTemperature(double value) {
   #if ENABLE_OIL_SENSOR
-    if (!isnan(value)) {
-      if (oilTempValue == NULL) return;
-      int rounded = (int)lround(value);
-      if (lastOilTemperatureC != rounded) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", rounded);
-        setLabelValue(oilTempValue, buf);
-        lastOilTemperatureC = rounded;
-      }
-    }
+    showSensorValue(oilTempValue, SENSOR_OIL_TEMP, value);
   #endif
 }
 
 void setOilPressure(double value) {
   #if ENABLE_OIL_SENSOR
-    if (!isnan(value)) {
-      if (oilPressureValue == NULL) return;
-      int tenths = (int)lround(value * 10.0);
-      if (lastOilPressureTenths != tenths) {
-        char buf[16];
-        int whole = tenths / 10;
-        int frac = abs(tenths % 10);
-        snprintf(buf, sizeof(buf), "%d.%d", whole, frac);
-        setLabelValue(oilPressureValue, buf);
-        lastOilPressureTenths = tenths;
-      }
-    }
+    showSensorValue(oilPressureValue, SENSOR_OIL_PRESSURE, value);
   #endif
 }
 
 void setEgt(double value) {
   #if ENABLE_EGT_SENSOR
-    if (!isnan(value)) {
-      if (egtValue == NULL) return;
-      int rounded = (int)lround(value);
-      if (lastEgtC != rounded) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", rounded);
-        setLabelValue(egtValue, buf);
-        lastEgtC = rounded;
-      }
-    }
+    showSensorValue(egtValue, SENSOR_EGT, value);
   #endif
 }
 
 void setIntercoolerTemperature(double value) {
   #if ENABLE_INTERCOOLER_SENSOR
-    if (!isnan(value)) {
-      if (intercoolerValue == NULL) return;
-      int rounded = (int)lround(value);
-      if (lastIntercoolerTemperatureC != rounded) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", rounded);
-        setLabelValue(intercoolerValue, buf);
-        lastIntercoolerTemperatureC = rounded;
-      }
-    }
+    showSensorValue(intercoolerValue, SENSOR_INTAKE, value);
   #endif
 }
 
+// A NAN in SensorData means "no fresh, valid reading" (sensor fault, stale frame or
+// lost CAN link). It is passed through so the readout shows "--".
 void updateUI(const SensorData& data) {
   #if ENABLE_BOOST_SENSOR
-    if (!isnan(data.boostPressure)) {
-      setBoostPressure(data.boostPressure);
-    }
+    setBoostPressure(data.boostPressure);
   #endif
 
   if (current_view == 0) {
     // Grid view: update all sensor labels
-    #if ENABLE_OIL_SENSOR
-      if (!isnan(data.oilTemperature)) {
-        setOilTemperature(data.oilTemperature);
-      }
-      if (!isnan(data.oilPressure)) {
-        setOilPressure(data.oilPressure);
-      }
-    #endif
-
-    #if ENABLE_EGT_SENSOR
-      if (!isnan(data.egt)) {
-        setEgt(data.egt);
-      }
-    #endif
-
-    #if ENABLE_INTERCOOLER_SENSOR
-      if (!isnan(data.intercoolerTemperature)) {
-        setIntercoolerTemperature(data.intercoolerTemperature);
-      }
-    #endif
+    setOilTemperature(data.oilTemperature);
+    setOilPressure(data.oilPressure);
+    setEgt(data.egt);
+    setIntercoolerTemperature(data.intercoolerTemperature);
   } else {
     // Solo view: update the displayed sensor
     updateSoloView(data);
