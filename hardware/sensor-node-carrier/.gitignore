@@ -1,0 +1,8 @@
+# KiCad lock files, local window state and caches
+~*.lck
+*.kicad_prl
+fp-info-cache
+*-backups/
+__pycache__/
+# Loose Gerbers: the zip in out/ is the copy to keep
+out/gerbers/

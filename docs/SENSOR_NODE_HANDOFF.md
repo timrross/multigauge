@@ -1,0 +1,300 @@
+# Sensor Node Handoff (VW T4 digital dash)
+
+Written 2026-11-10 from a long design conversation on claude.ai. Revised the same day (revision 2) by a local Claude Code session that read the firmware repo and reviewed the board plan. Section 2a lists what revision 2 changed. Section 6 describes the firmware as it actually is in the repo.
+
+## 1. Project in one paragraph
+
+Tim is building a digital dash for a VW T4 (1.9 TD ABL, mechanical injection, no engine ECU). Two nodes talk over CAN:
+
+- **Display node** in the dash: Adafruit Qualia ESP32-S3 driving a round TFT in a printed ASA-CF housing. Built and working, waiting for CAN data. Its Waveshare SN65HVD230 CAN module is already mounted in the housing.
+- **Sensor node** in the engine bay, in its own enclosure near the battery box (away from the heat and dirt of the engine): Waveshare ESP32-C3-Zero reading oil pressure, boost pressure, oil temp, intake temp and EGT, then sending them over CAN. Only the CAN pair goes through the bulkhead, which is the reason for having two nodes.
+
+The firmware started as one monolithic codebase on the S3. Claude Code already refactored it into two MCUs plus CAN. That refactor has not been bench tested, and it predates the hardware changes in section 2.
+
+## 2. What changed since the firmware refactor
+
+1. **Hella 6PR 010 378-207 combined oil sensor is removed.** Its PWM decoding (RMT or interrupt timing, 9216 us frame) is no longer needed. It is replaced by two plain analogue sensors.
+2. **All analogue sensors now go through an ADS1115** over I2C. The C3's internal ADC is not used.
+3. **GPIO assignments changed** (section 4).
+4. **A custom through-hole carrier PCB** replaces the old perf board. All four modules plug into sockets on it.
+5. **The TPS61023 5V boost module is no longer needed.** The sensors get 5V from the buck converter.
+
+## 2a. Revision 2 changes (board review, 2026-11-10)
+
+1. **R7 and R8 added.** A 10k series resistor sits between each NTC node and its ADC pin, and the 100nF filter caps C5 and C6 moved to the ADC side. A loom wire shorted to 12V now pushes about 1 mA into the ADC instead of killing it, and the filter cutoff drops from several kHz to about 150 Hz. Cost: under 0.2C of error.
+2. **D1 added.** A 1N5817 Schottky feeds the C3's 5V pin from the +5V rail. USB and the buck can now be connected at the same time without the two supplies fighting.
+3. **J1 pins 9 and 10 are now 5V and GND for the boost sensor**, so each pressure sensor has its own supply pair and the loom needs no splice. Pins 1 to 8 are unchanged. Only pins 11 and 12 remain spare, so J3 shrinks to 2 pins.
+4. **J4 added.** A 4-pin I2C expansion header (3V3, GND, SDA, SCL) for a BME280 or a second ADS1115 later.
+5. **TP1 to TP7 added.** Test points on +5V, +3V3, GND and the four ADC inputs.
+6. **R1 to R8 are 1% metal film.** With 5% parts the divider ratio could be 4% out and oil temp about 2C out at 100C.
+7. **L1 needs a DC resistance under 0.5 ohm.** The sensors are fed through it and 5V is the oil pressure sensor's minimum supply.
+8. **Modules get soldered in after bench testing** (or use turned-pin sockets). Plain sockets work loose with diesel vibration.
+9. **Enclosure location decided:** near the battery box.
+
+## 3. Hardware on the sensor node
+
+| Part | Detail |
+| --- | --- |
+| MCU | Waveshare ESP32-C3-Zero (ESP32-C3, 4MB flash, USB-Serial/JTAG). Two 1x9 pin rows, 15.24mm apart |
+| ADC | ADS1115 breakout, 10 pins in one row: VDD, GND, SCL, SDA, ADDR, ALRT, A0, A1, A2, A3. ADDR tied to GND, so I2C address 0x48. Has its own I2C pull-ups |
+| Thermocouple amp | MAX31855 breakout, 6 pins: Vin, 3Vo, GND, DO, CS, CLK. Powered from 5V on Vin. K-type EGT probe wired straight to its screw terminal |
+| CAN transceiver | Waveshare SN65HVD230 module, 4 pins: 3V3, GND, CAN RX, CAN TX. Bus wires go to its own screw terminal. Has a 120 ohm termination jumper |
+| Oil pressure | 1/8 NPT transducer, 0 to 150 PSI, 0.5 to 4.5V output, 5 to 16V supply. Red = supply, black = GND, green = output |
+| Boost pressure | Round 3-wire sensor (red, black, green). Tim reports 0 to 5V output. No part number, range unconfirmed. An existing calibration equation is in the old code |
+| Oil temp | 1/8 NPT two-wire NTC sender, 2031 ohm at 20C, 108 ohm at 100C |
+| Intake temp | Two-wire NTC in the side of the intercooler, about 2.1k at 25C. Not shared with anything |
+| EGT | K-type thermocouple |
+
+Power: 12V, 1A blade fuse, 1.5KE36A TVS plus 100uF/50V plus 100nF across the buck input, GYVRM potted buck (8 to 40V in, 5V 5A out), then on the carrier board a 47uH series inductor (L1) followed by 100uF/25V plus 100nF. That filtered +5V rail feeds the pressure sensors and the MAX31855 directly, and the C3 through Schottky diode D1. The display node has the same chain with a 2A fuse.
+
+Power notes from the review:
+
+- L1 must be a low resistance part (under 0.5 ohm, rated 500 mA or more). Measure it with a multimeter. Small axial 47uH parts are often 1 ohm or more, which would drop the sensor supply below 5V.
+- Measure the +5V rail at J1 pin 1 once the board is built and keep it as a firmware constant. If the pressure sensors are ratiometric (output scales with supply), any error on this rail is a direct pressure error.
+- The 1.5KE36A clamps at about 50V at full surge current, above the buck's 40V limit. A 1.5KE27A (clamps about 37V, stands off 23V) is a better fit. Low priority, off board.
+- Use 105C rated electrolytics and ferrules on stranded wire in the screw terminals.
+
+## 4. Pin map (firmware must match this)
+
+| GPIO | Function | Goes to |
+| --- | --- | --- |
+| GP0 | CAN TX (TWAI) | CAN module "CAN TX" pin |
+| GP1 | CAN RX (TWAI) | CAN module "CAN RX" pin |
+| GP3 | SPI MISO | MAX31855 DO |
+| GP4 | I2C SDA | ADS1115 SDA |
+| GP5 | I2C SCL | ADS1115 SCL |
+| GP6 | SPI SCK | MAX31855 CLK |
+| GP7 | SPI CS | MAX31855 CS |
+
+Left free on purpose: GP2, GP8 and GP9 (boot strapping pins), GP10 (onboard RGB LED), GP18 and GP19 (USB), GP20 and GP21.
+
+Module silkscreen "CAN TX" is the transceiver's data input, so it connects to the MCU's TWAI TX. If the bus stays silent on the bench, swapping GP0 and GP1 in firmware is the first thing to try.
+
+## 5. ADS1115 channels and conversions
+
+Use the +/-4.096V gain setting (0.125 mV per bit), single-ended reads. All four inputs stay below 3.3V. Each input has a 100nF capacitor to ground right at the ADC pin.
+
+| Channel | Signal | Front end | Voltage at the ADC |
+| --- | --- | --- | --- |
+| A0 | Oil pressure | 10k over 15k divider (R1, R2), ratio 0.6 | 0.30V (0 PSI) to 2.70V (150 PSI) |
+| A1 | Boost pressure | 10k over 15k divider (R3, R4), ratio 0.6 | 0V to 3.0V |
+| A2 | Oil temp NTC | 330 ohm pull-up to 3V3 (R5), NTC to GND, then 10k in series (R7) | 2.84V at 20C, 0.81V at 100C, 0.43V at 130C |
+| A3 | Intake temp NTC | 2.2k pull-up to 3V3 (R6), NTC to GND, then 10k in series (R8) | 1.77V at 20C, 0.72V at 60C, 0.26V at 100C |
+
+The 10k series resistors work against the ADS1115's input resistance (about 6 megohm at this gain), so the NTC channels read about 0.17% low. That is under 0.2C and can be ignored or folded into the pull-up constant.
+
+Conversions:
+
+```
+Oil pressure:   V_sensor = V_adc / 0.6
+                PSI = (V_sensor - 0.5) * 37.5        (bar = PSI * 0.0689476)
+
+Boost pressure: V_sensor = V_adc / 0.6
+                PSI = 12.864 * V_sensor - 12.877
+                (the existing calibration. It works on the sensor's own
+                voltage, so only the divider ratio changes, not the equation.)
+
+NTC channels:   R = R_pullup * V_adc / (V_3v3 - V_adc)
+                1/T_kelvin = A + B*ln(R) + C*ln(R)^3
+                T_celsius = T_kelvin - 273.15
+```
+
+Steinhart-Hart coefficients:
+
+| | Oil temp (A2) | Intake temp (A3) |
+| --- | --- | --- |
+| R_pullup | 330 | 2200 |
+| A | 1.511193e-3 | 1.357216e-3 |
+| B | 2.489549e-4 | 2.446728e-4 |
+| C | 1.298416e-8 | 2.843971e-7 |
+| Source | Least squares fit to the manufacturer's 16-point table, 20 to 170C. Fits within 0.5C. Sensor tolerance is +/-5% | Tim's own three-point fit (3.1C 5050 ohm, 50C 849 ohm, 71.4C 427 ohm). Within 0.8C of his four other measurements |
+
+Oil sender table used for the fit (C, ohm): 20 2031, 30 1286, 40 843.9, 50 569.9, 60 388, 70 277.8, 80 200, 90 146.7, 100 108, 110 82.7, 120 63.5, 130 49.3, 140 38.9, 150 30.4, 160 24.4, 170 19.8.
+
+Make these compile-time constants in one place: divider ratio per channel, pull-up values, V_3v3 and V_5V (measure the real rails), and the coefficients. With 1% resistors the divider ratios should be within 0.8%, so trimming against a multimeter is optional.
+
+Fault handling to add:
+
+- NTC channel above about 3.2V = open circuit, below about 0.1V = short.
+- Oil pressure sensor output below about 0.25V or above about 4.75V (before the divider) = sensor or wiring fault.
+- MAX31855 fault bits (open, short to GND, short to VCC).
+- A per-value "invalid" state over CAN is the natural fit. Note the display only shows "--" at boot. After that it ignores invalid values and keeps the last good reading on screen, so the display side needs work too (section 6).
+
+## 6. Firmware state
+
+Updated 2026-11-10. The firmware now matches the carrier board and the bugs from the review are fixed. The changes are uncommitted in the working tree. All four PlatformIO targets build, and the conversion maths and CAN encode/decode pass a PC-side test against the numbers in section 5. **Nothing has been run on hardware yet.** Flash both nodes together: the oil frame's status bits changed, so an old node and a new node disagree.
+
+Where things live on the sensor node:
+
+| File | Contents |
+| --- | --- |
+| `src/sensor_mcu/sensor_config.h` | Every board-specific number: pins, ADC channels, divider ratios, pull-ups, rail voltages, coefficients, fault limits, filter speeds |
+| `src/sensor_mcu/conversions.h` | Pure maths: ADC volts to value plus fault code. No hardware access, so it can be tested on a PC |
+| `src/sensor_mcu/sensor.cpp` | ADS1115 and MAX31855 access |
+| `src/sensor_mcu/can_tx.cpp` | CAN send and bus recovery |
+| `include/shared/can_protocol.h` | Frame layouts, shared by both nodes |
+
+What changed on the sensor node:
+
+- Pins, ADC channel order, divider ratios and pull-ups match sections 4 and 5. Oil temp uses the section 5 coefficients.
+- Oil pressure: fault limits are 0.25V and 4.75V at the sensor. Between 0.25V and 0.5V it reads 0 bar instead of going invalid.
+- Boost: unplugged (below 0.2V) or shorted high (above 4.9V) is now a fault. These two limits are a guess until the sensor is checked on the bench.
+- NTC channels: below 0.1V is a short. Open circuit is a reading within 1.5% of the 3V3 rail for oil temp (3% for intake). A very cold oil sender also reads close to the rail, so oil temp shows "--" below about -24C, and the limit only works if `V_3V3_RAIL` is set from a real measurement.
+- EGT: the MAX31855 fault bits are reported, and an all-zero reply (chip absent or unpowered) is a fault. Readings from -50C to 1300C are accepted.
+- Smoothing is per sensor and resets after a fault. Time to show 90% of a change: boost 0.45 s, oil pressure 1.7 s, EGT 2.3 s, oil temp 4 s, intake 6.5 s.
+- ADS1115 reads have a 30 ms time limit, and every I2C transaction is checked. A missing or dead ADS1115 no longer stops the node: it keeps sending heartbeats, reports the fault and keeps looking for the module.
+- A 5 second watchdog covers all three tasks. Start-up failures restart the chip instead of hanging.
+- CAN bus-off recovery now restarts the driver.
+- `V_3V3_RAIL` and `V_5V_RAIL` are constants to set from multimeter readings on the real board.
+
+What changed in the CAN protocol (IDs, bitrate and frame sizes are unchanged):
+
+- Oil frame (0x101): temperature and pressure each have their own valid bit, so a fault on one no longer blanks the other.
+- Every frame carries a fault code for diagnostics.
+- Heartbeat (0x1FF) carries a bit per faulted sensor.
+
+What changed on the display node:
+
+- An invalid value shows "--" instead of holding the last good number. The boost needle drops to zero.
+- A value that stops arriving is blanked after 1 s (boost) or 3 s (the rest). Everything blanks if the heartbeat is lost for 3 s.
+- Readouts turn red past a warning threshold: oil pressure below 0.8 bar, oil temp above 130C, EGT above 700C. These are starting values in `src/display_mcu/ui.cpp` and need tuning to the engine. Oil pressure is also red with the engine off, like an oil light.
+- Short, remote and extended frames are ignored. Sensor node reboots and missed heartbeats are logged in debug builds.
+- The connection dot is only redrawn when it changes. One LVGL call at boot now takes the GUI mutex.
+
+Not done, on purpose:
+
+- No watchdog on the display node. A false trigger there would reboot the screen while driving, and its timing under LVGL has not been measured.
+- The heartbeat fault bits are received and logged but not shown on screen.
+- The BMP280 is still unimplemented on both nodes (library in `lib_deps`, `ENABLE_ATMOS_SENSOR` 0).
+- The display's TWAI pins (GP16 TX, GP17 RX) still need checking against the real wiring.
+
+Bench test order: ADS1115 alone with a potentiometer on each input (use the test points), then real sensors at room temperature against the voltages in section 5, then CAN between the two nodes with both 120 ohm terminations fitted. With power off and both nodes connected, a multimeter across CANH and CANL should read about 60 ohm.
+
+Flashing: esptool is installed through pipx on Tim's Mac. PlatformIO and the Arduino IDE are also installed. The C3 appears as /dev/cu.usbmodem*. Close the Arduino IDE serial monitor first or the port is busy. On the carrier board D1 makes it safe to have USB and the buck connected together. On the old perf board (no D1) never connect both.
+
+## 7. Carrier board (KiCad, Tim's first PCB)
+
+All through-hole, 2 layer, 85.09 x 66.04mm. The KiCad 10 project is in `hardware/sensor-node-carrier/`:
+
+| File | What it is |
+| --- | --- |
+| `sensor-node-carrier.kicad_pro` | Open this in KiCad |
+| `sensor-node-carrier.kicad_sch` | Schematic |
+| `sensor-node-carrier.kicad_pcb` | Board: placed, routed, GND pour on both layers |
+| `SensorNode.kicad_sym`, `SensorNode.pretty/` | Project symbols and footprints for the four modules |
+| `out/schematic.pdf` | Schematic printout |
+| `out/paper-test-fit-1to1.pdf` | Print at 100% for the paper test fit |
+| `tools/` | The scripts that generated all of the above. `tools/build.sh` regenerates everything and overwrites hand edits |
+
+The files were generated by script and then checked with kicad-cli, not by eye alone: ERC 0 violations, schematic netlist identical to the netlist table below, DRC 0 violations, 0 unconnected pads, 0 schematic parity issues. The routing came from a simple autorouter (0.5mm signal, 1.0mm power, 0.2mm clearance, 7 vias). It is electrically correct but not pretty, so reroute anything you like.
+
+**Not verified, because it needs the real parts in hand.** Check all of these on the paper print before ordering:
+
+1. U1 orientation. The footprint assumes that with the C3-Zero seen from above and USB at the top, the left row reads 5V, GND, 3V3, GP0 to GP5 and the right row reads GP21 (TX), GP20 (RX), GP19, GP18, GP10, GP9, GP8, GP7, GP6. If the real board is mirrored, the footprint is wrong.
+2. Module outlines for U2, U3 and U4 are estimates (28 x 18, 20 x 20 and 16 x 29.5mm). The pin rows are exact, the bodies are not. U3 and U4 are drawn lying flat with their screw terminals at the right-hand board edge.
+3. Pin 1 end of each single-row module. Every socket pin has its name on the silkscreen, so compare the print against each module's own labels.
+4. Screw terminal wire entry. J1 faces the bottom edge and J2 faces the left edge, assuming the KiCad Phoenix MKDS footprint matches the terminals in the parts box.
+5. Part sizes: L1 is drawn as a 12 x 5mm axial on 15.24mm pitch, C1 as 8mm diameter on 3.5mm pitch, the 100nF caps on 5mm pitch.
+
+Parts:
+
+| Ref | Part | Footprint |
+| --- | --- | --- |
+| U1 | ESP32-C3-Zero | 2 x 1x9 socket rows, 15.24mm apart |
+| U2 | ADS1115 module | 1x10 socket |
+| U3 | MAX31855 module | 1x6 socket |
+| U4 | SN65HVD230 CAN module | 1x4 socket |
+| J1 | Loom terminal | 12-way 5.08mm screw terminal |
+| J2 | 5V in | 2-way 5.08mm screw terminal |
+| J3 | Spare loom pins | 1x2 pin header |
+| J4 | I2C expansion | 1x4 pin header |
+| L1 | 47uH, under 0.5 ohm, 500 mA or more | Axial, 15.24mm pitch |
+| C1 | 100uF 25V, 105C | Radial, 8mm, 3.5mm pitch |
+| C2 to C6 | 100nF | Disc, 5mm pitch |
+| D1 | 1N5817 Schottky | DO-41, 10.16mm pitch |
+| R1, R3, R7, R8 | 10k 1% | Axial, 10.16mm pitch |
+| R2, R4 | 15k 1% | Axial, 10.16mm pitch |
+| R5 | 330 ohm 1% | Axial, 10.16mm pitch |
+| R6 | 2.2k 1% | Axial, 10.16mm pitch |
+| TP1 to TP7 | Test points: +5V, +3V3, GND, A0, A1, A2, A3 | 2mm pad, 1mm hole |
+| H1 to H4 | M3 mounting holes | 3.2mm |
+
+Socket pin order, pin 1 first:
+
+- U1 pins 1 to 9 (left row): 5V, GND, 3V3, GP0, GP1, GP2, GP3, GP4, GP5
+- U1 pins 10 to 18 (right row): GP21, GP20, GP19, GP18, GP10, GP9, GP8, GP7, GP6
+- U2: VDD, GND, SCL, SDA, ADDR, ALRT, A0, A1, A2, A3
+- U3: Vin, 3Vo, GND, DO, CS, CLK
+- U4: 3V3, GND, CAN RX, CAN TX
+- J4: 3V3, GND, SDA, SCL
+
+Loom terminal J1 (the loom ends in a Deutsch DT 12-pin, DT06-12SA and DT04-12PA):
+
+| Pin | Signal | Silkscreen |
+| --- | --- | --- |
+| 1 | 5V to the oil pressure sensor | 5V |
+| 2 | GND to the oil pressure sensor | GND |
+| 3 | Oil pressure signal | OILP |
+| 4 | Boost pressure signal | BST |
+| 5, 6 | Oil temp signal, return | OILT, GND |
+| 7, 8 | Intake temp signal, return | IAT, GND |
+| 9 | 5V to the boost sensor | 5V |
+| 10 | GND to the boost sensor | GND |
+| 11, 12 | Spares, routed to J3 | SP1, SP2 |
+
+Netlist:
+
+| Net | Connects |
+| --- | --- |
+| 5V_IN | J2 pin 1, L1 end A |
+| +5V | L1 end B, C1 +, C2, D1 anode, U3 Vin, J1 pins 1 and 9, TP1 |
+| +5V_MCU | D1 cathode, U1 5V |
+| +3V3 | U1 3V3, U2 VDD, U4 3V3, R5 top, R6 top, J4 pin 1, TP2 |
+| GND | J2 pin 2, C1 -, C2, U1 GND, U2 GND, U2 ADDR, U3 GND, U4 GND, J1 pins 2, 6, 8 and 10, R2 bottom, R4 bottom, C3 to C6 bottom, J4 pin 2, TP3 |
+| OIL_P_RAW | J1 pin 3, R1 top |
+| OIL_P | R1 bottom, R2 top, C3 top, U2 A0, TP4 |
+| BOOST_RAW | J1 pin 4, R3 top |
+| BOOST | R3 bottom, R4 top, C4 top, U2 A1, TP5 |
+| OIL_T_RAW | J1 pin 5, R5 bottom, R7 end A |
+| OIL_T | R7 end B, C5 top, U2 A2, TP6 |
+| IAT_RAW | J1 pin 7, R6 bottom, R8 end A |
+| IAT | R8 end B, C6 top, U2 A3, TP7 |
+| SDA | U1 GP4, U2 SDA, J4 pin 3 |
+| SCL | U1 GP5, U2 SCL, J4 pin 4 |
+| TC_CLK | U1 GP6, U3 CLK |
+| TC_CS | U1 GP7, U3 CS |
+| TC_DO | U1 GP3, U3 DO |
+| CAN_TX | U1 GP0, U4 CAN TX |
+| CAN_RX | U1 GP1, U4 CAN RX |
+| SPARE1, SPARE2 | J1 pins 11 and 12, J3 pins 1 and 2 |
+
+No-connect: U1 GP2, GP8, GP9, GP10, GP18, GP19, GP20, GP21, U2 ALRT, U3 3Vo.
+
+Layout as built: J1 along the bottom edge. U1 top centre with USB at the top edge. Power entry (J2, L1, C1, C2, D1) top left, with J2 on the left edge. U2 on the left with its analogue pins next to the filter caps. Dividers, pull-ups and test points in the middle between J1 and U2. U4 and U3 on the right with their screw terminals at the right edge. Nothing sits under a module.
+
+Board house settings: 2 layer, 1.6mm, HASL. Smallest track 0.5mm, smallest gap 0.2mm, vias 0.8mm with a 0.4mm hole, which any board house can make. The manufacturing files are in `hardware/sensor-node-carrier/out/sensor-node-carrier-gerbers.zip` (7 Gerber layers plus 2 drill files). Upload that zip as it is, but only after the paper test fit. If the fit changes the board, the zip has to be exported again (`tools/build.sh` does it).
+
+CAN bus between nodes: twisted pair (blue and white) straight into each CAN module's screw terminal, same colour on the same terminal at both ends, 120 ohm termination at both ends. Both nodes share the van's ground through their buck converters.
+
+## 8. Open items
+
+- [x] **BME280.** Not on the carrier board. The firmware already expects a BMP280 on the display node. J4 is there if one is ever wanted in the engine bay.
+- [x] **Enclosure location.** Near the battery box.
+- [ ] **Paper test fit** before ordering boards. See the five checks in section 7.
+- [ ] **EGT probe grounding.** Measure continuity between either thermocouple lead and the probe's metal sheath. If there is continuity the MAX31855 will report "short to GND" once the probe is screwed into the manifold, and an insulated-junction probe is needed.
+- [ ] **Boost sensor.** Confirm on the bench that it runs from 5V, never outputs above 5V, and whether it reads absolute or gauge pressure.
+- [ ] **Module pin direction.** The MAX31855 and CAN modules may have right-angle header pins. The board assumes straight pins with the module lying flat. If they are right-angle, either swap the headers or use right-angle sockets, and add support (standoff or glue) since they only have pins on one edge.
+- [ ] **L1.** Measure its DC resistance. Under 0.5 ohm or replace it.
+- [ ] **Display node TWAI pins** verified against the real wiring.
+- [ ] **Trim the stray braid strand** at the MAX31855 thermocouple terminal.
+- [ ] **Engine bay housing** for the sensor node, to be modelled and printed in ASA-CF. Cable entries: loom at the bottom edge, CAN and thermocouple at the right edge, 5V at the left edge, USB at the top edge.
+- [ ] **Firmware changes** in section 6.
+
+## 9. How Tim likes to work
+
+- UK based, experienced web developer, new to PCB design and fairly new to analogue electronics. Explain electronics plainly, skip the software basics.
+- Wants short, actionable answers. Uses parts he already has where possible.
+- Checks things himself and will push back if something looks off.
+- Never use em dashes in replies to him.
+
+The full design doc is "Sensor Node Carrier Board" in the VW T4 Van Upgrades project on claude.ai. This file carries everything from it that the local work needs.

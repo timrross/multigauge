@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "SensorNode")(type "KiCad")(uri "${KIPRJMOD}/SensorNode.kicad_sym")(options "")(descr "Sensor node module symbols"))
+)
