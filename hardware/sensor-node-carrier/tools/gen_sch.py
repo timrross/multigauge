@@ -85,7 +85,7 @@ MODS = [
     ("ESP32-C3-Zero", U1_LEFT, U1_RIGHT, 20.32, "U1", "Waveshare ESP32-C3-Zero on two 1x9 rows, 15.24mm apart"),
     ("ADS1115_Module", U2_PINS, [], 15.24, "U2", "ADS1115 16-bit ADC breakout, 1x10 header"),
     ("MAX31855_Module", U3_PINS, [], 15.24, "U3", "MAX31855 K-type thermocouple breakout, 1x6 header"),
-    ("CAN_Module", U4_PINS, [], 15.24, "U4", "Waveshare SN65HVD230 CAN transceiver module, 1x4 header"),
+    ("CAN_Module", U4_PINS, [], 15.24, "U4", "SN65HVD230 CAN transceiver module, 1x4 header"),
 ]
 for name, l, r, w, ref, desc in MODS:
     SYMS["SensorNode:" + name] = modsym(name, l, r, w, PARTS[ref][0], PARTS[ref][2], desc)
@@ -286,9 +286,10 @@ text("If the bus stays silent, swap GP0 and GP1 in firmware.", 198.12, 82.55)
 
 text("LOOM: 12-way terminal to the Deutsch DT connector", 198.12, 93.98, 1.8, True)
 j1 = place("J1", 236.22, 115.57, refp=(0, -16.51, None), valp=(0, 19.05, None))
-J1_NOTES = ["+5V  oil pressure sensor", "GND  oil pressure sensor", "Oil pressure signal", "Boost signal",
+J1_NOTES = ["+5V  oil pressure sensor", "GND  oil pressure sensor", "Oil pressure signal",
+            "+5V  boost sensor", "GND  boost sensor", "Boost signal",
             "Oil temp NTC", "Oil temp NTC return", "Intake temp NTC", "Intake temp NTC return",
-            "+5V  boost sensor", "GND  boost sensor", "Spare", "Spare"]
+            "Spare", "Spare"]
 for i in range(12):
     num = str(i + 1); stub(j1[num], -5.08, PIN_NET[("J1", num)])
     text(J1_NOTES[i], 242.57, j1[num][1] + 0.635)

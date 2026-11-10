@@ -10,7 +10,9 @@ python3 "$T/gen_fp.py" && python3 "$T/gen_pro.py" || exit 1
 kicad-cli sch erc --severity-all -o "$TMP/erc.rpt" $N.kicad_sch 2>&1 | grep "violations"
 kicad-cli sch export netlist --format kicadsexpr -o "$TMP/sch.net" $N.kicad_sch >/dev/null 2>&1
 python3 "$T/check_net.py" "$TMP/sch.net" || exit 1
-"$KP" "$T/gen_pcb.py" "$TMP/sch.net" 2>&1 | grep -v "wxApp" | grep .
+"$KP" "$T/gen_pcb.py" "$TMP/sch.net" > "$TMP/pcb.log" 2>&1; RC=$?
+grep -v "wxApp" "$TMP/pcb.log" | grep .
+[ $RC -eq 0 ] || { echo "BOARD GENERATION FAILED: the board file was not updated"; exit 1; }
 kicad-cli pcb drc --schematic-parity --severity-all --refill-zones --save-board -o "$TMP/drc.rpt" $N.kicad_pcb 2>&1 | grep "Found"
 python3 "$T/gen_pro.py"
 kicad-cli pcb drc --schematic-parity --severity-all -o "$TMP/drc2.rpt" $N.kicad_pcb 2>&1 | grep "Found"

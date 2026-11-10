@@ -55,10 +55,14 @@ def single(name, descr, value, pins, body, label):
 
 single("Module_ADS1115_1x10", "ADS1115 breakout on a 1x10 socket. Outline approximate (28 x 18mm)", "ADS1115",
        U2_PINS, (-2.57, -16.0, 25.43, 2.0), "ADS1115")
-single("Module_MAX31855_1x06", "MAX31855 breakout on a 1x6 socket. Outline approximate (20 x 20mm), screw terminal at the far edge",
-       "MAX31855", U3_PINS, (-3.65, -18.0, 16.35, 2.0), "MAX31855")
-single("Module_SN65HVD230_1x04", "Waveshare SN65HVD230 CAN module on a 1x4 socket. Outline approximate (16 x 29.5mm), screw terminal at the far edge",
-       "SN65HVD230", U4_PINS, (-4.19, -27.5, 11.81, 2.0), "CAN")
+# Tim's module measures 19.5mm across x 22.5mm long (2026-11-10). The Vin pin is 3mm from the side
+# and the pin row is 2mm in from the end, so the far side is 19.5 - 3 - 12.7 = 3.8mm past CLK.
+single("Module_MAX31855_1x06", "MAX31855 breakout on a 1x6 socket. Outline 19.5 x 22.5mm as measured, screw terminal at the far edge",
+       "MAX31855", U3_PINS, (-3.0, -20.5, 16.5, 2.0), "MAX31855")
+# Tim's module measures 10 x 26mm (2026-11-10). The 4 pins span 7.62mm, centred on the 10mm width.
+# The pin row is taken as 1.5mm in from the end of the module.
+single("Module_SN65HVD230_1x04", "SN65HVD230 CAN module on a 1x4 socket. Outline 10 x 26mm as measured, screw terminal at the far edge",
+       "SN65HVD230", U4_PINS, (-1.19, -24.5, 8.81, 1.5), "CAN")
 open(OUT + "/fp-lib-table", "w").write(
     '(fp_lib_table\n\t(version 7)\n\t(lib (name "SensorNode")(type "KiCad")(uri "${KIPRJMOD}/SensorNode.pretty")(options "")(descr "Sensor node module sockets"))\n)\n')
 print("footprints written")

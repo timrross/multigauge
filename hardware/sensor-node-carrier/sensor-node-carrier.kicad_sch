@@ -2680,7 +2680,7 @@
 					)
 				)
 			)
-			(property "Description" "Waveshare SN65HVD230 CAN transceiver module, 1x4 header"
+			(property "Description" "SN65HVD230 CAN transceiver module, 1x4 header"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -3929,18 +3929,7 @@
 		)
 		(uuid "17560b1e-1099-5773-9c20-ce55b77f49ce")
 	)
-	(text "Oil temp NTC return"
-		(exclude_from_sim no)
-		(at 242.57 116.205 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "1edd77dd-43b9-5bf3-87b7-e01c23370484")
-	)
-	(text "+5V  boost sensor"
+	(text "Intake temp NTC"
 		(exclude_from_sim no)
 		(at 242.57 123.825 0)
 		(effects
@@ -3985,9 +3974,9 @@
 		)
 		(uuid "34f65973-3d86-588e-9118-41682cd9e01e")
 	)
-	(text "Oil temp NTC"
+	(text "Boost signal"
 		(exclude_from_sim no)
-		(at 242.57 113.665 0)
+		(at 242.57 116.205 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3995,17 +3984,6 @@
 			(justify left bottom)
 		)
 		(uuid "35b0dbbc-d4c2-53f9-b148-a002874e9c51")
-	)
-	(text "Intake temp NTC return"
-		(exclude_from_sim no)
-		(at 242.57 121.285 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "4af48305-e454-5b42-9bc0-a631f8749076")
 	)
 	(text "ADC: ADS1115 module, address 0x48 (ADDR to GND)"
 		(exclude_from_sim no)
@@ -4053,9 +4031,9 @@
 		)
 		(uuid "62248525-4a3f-51e6-93de-7c6e4d9c0458")
 	)
-	(text "Boost signal"
+	(text "GND  boost sensor"
 		(exclude_from_sim no)
-		(at 242.57 111.125 0)
+		(at 242.57 113.665 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4063,6 +4041,17 @@
 			(justify left bottom)
 		)
 		(uuid "774036e5-7b1a-57a0-9343-577e0fb45175")
+	)
+	(text "Oil temp NTC"
+		(exclude_from_sim no)
+		(at 242.57 118.745 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "83c403f0-8e12-5a2a-bde8-f67e0a44f357")
 	)
 	(text "EGT: MAX31855 module (probe on its own terminal)"
 		(exclude_from_sim no)
@@ -4133,7 +4122,7 @@
 		)
 		(uuid "ad109e03-5925-5fe6-b5a4-bf300b692c32")
 	)
-	(text "GND  boost sensor"
+	(text "Intake temp NTC return"
 		(exclude_from_sim no)
 		(at 242.57 126.365 0)
 		(effects
@@ -4144,9 +4133,9 @@
 		)
 		(uuid "b9d12e6d-732f-54ce-b8ff-a102c84e403b")
 	)
-	(text "Intake temp NTC"
+	(text "Oil temp NTC return"
 		(exclude_from_sim no)
-		(at 242.57 118.745 0)
+		(at 242.57 121.285 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4211,6 +4200,17 @@
 			(justify left bottom)
 		)
 		(uuid "f127f69d-37fb-5eb2-920e-0b9c2e54ef8b")
+	)
+	(text "+5V  boost sensor"
+		(exclude_from_sim no)
+		(at 242.57 111.125 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "ff6fea8b-a5eb-51ea-99f9-42086b7f1f69")
 	)
 	(junction
 		(at 93.98 38.1)
@@ -5544,6 +5544,28 @@
 			)
 		)
 	)
+	(global_label "IAT_RAW"
+		(shape passive)
+		(at 226.06 123.19 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "3c7cf321-71f3-5e89-86e0-782917ee930b")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 0 0 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "SPARE2"
 		(shape passive)
 		(at 226.06 130.81 180)
@@ -5620,28 +5642,6 @@
 			(justify right)
 		)
 		(uuid "57a425f8-1c4e-5c7e-aa6c-8735b45a6a16")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 0 0 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-	)
-	(global_label "IAT_RAW"
-		(shape passive)
-		(at 226.06 118.11 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "58ddfc64-fa78-51ff-9596-2a622ee5d9a6")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 0 0 0)
 			(hide yes)
@@ -5852,28 +5852,6 @@
 			)
 		)
 	)
-	(global_label "BOOST_RAW"
-		(shape passive)
-		(at 226.06 110.49 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "9e05b303-97d4-588c-ad25-9b4cc63c1d91")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 0 0 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-	)
 	(global_label "CAN_TX"
 		(shape passive)
 		(at 218.44 74.93 180)
@@ -5918,9 +5896,9 @@
 			)
 		)
 	)
-	(global_label "OIL_T_RAW"
+	(global_label "BOOST_RAW"
 		(shape passive)
-		(at 226.06 113.03 180)
+		(at 226.06 115.57 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6060,6 +6038,28 @@
 			(justify right)
 		)
 		(uuid "dfc76e9d-caa7-5332-8b3a-2f2b52b53359")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 0 0 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "OIL_T_RAW"
+		(shape passive)
+		(at 226.06 118.11 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e1bc0dd3-5c20-5d33-861f-b8bee667ef6f")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 0 0 0)
 			(hide yes)
@@ -8023,7 +8023,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_THT:CP_Radial_D8.0mm_P3.50mm"
+		(property "Footprint" "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm"
 			(at 58.42 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -8228,8 +8228,8 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GND")
-		(at 226.06 115.57 270)
+		(lib_id "power:+5V")
+		(at 226.06 110.49 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -8239,7 +8239,7 @@
 		(dnp no)
 		(uuid "6cf6867e-9255-5491-a1c4-a559d83f544e")
 		(property "Reference" "#PWR24"
-			(at 226.06 115.57 90)
+			(at 226.06 110.49 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8249,19 +8249,19 @@
 				)
 			)
 		)
-		(property "Value" "GND"
-			(at 221.86 115.57 90)
+		(property "Value" "+5V"
+			(at 222.25 110.49 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify right)
+				(justify left)
 			)
 		)
 		(property "Footprint" ""
-			(at 226.06 115.57 90)
+			(at 226.06 110.49 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8272,7 +8272,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 226.06 115.57 90)
+			(at 226.06 110.49 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8283,7 +8283,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 226.06 115.57 90)
+			(at 226.06 110.49 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8894,8 +8894,8 @@
 		)
 	)
 	(symbol
-		(lib_id "power:+5V")
-		(at 226.06 123.19 90)
+		(lib_id "power:GND")
+		(at 226.06 120.65 270)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -8905,7 +8905,7 @@
 		(dnp no)
 		(uuid "96c8bb1a-0ef9-52ca-b901-5ba33244930d")
 		(property "Reference" "#PWR26"
-			(at 226.06 123.19 90)
+			(at 226.06 120.65 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8915,19 +8915,19 @@
 				)
 			)
 		)
-		(property "Value" "+5V"
-			(at 222.25 123.19 90)
+		(property "Value" "GND"
+			(at 221.86 120.65 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
+				(justify right)
 			)
 		)
 		(property "Footprint" ""
-			(at 226.06 123.19 90)
+			(at 226.06 120.65 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8938,7 +8938,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 226.06 123.19 90)
+			(at 226.06 120.65 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8949,7 +8949,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 226.06 123.19 90)
+			(at 226.06 120.65 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10755,7 +10755,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 226.06 120.65 270)
+		(at 226.06 113.03 270)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10765,7 +10765,7 @@
 		(dnp no)
 		(uuid "e4fbe426-dd9e-5589-a582-97ff3ce0aaab")
 		(property "Reference" "#PWR25"
-			(at 226.06 120.65 90)
+			(at 226.06 113.03 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10776,7 +10776,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 221.86 120.65 90)
+			(at 221.86 113.03 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10787,7 +10787,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 226.06 120.65 90)
+			(at 226.06 113.03 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10798,7 +10798,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 226.06 120.65 90)
+			(at 226.06 113.03 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10809,7 +10809,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 226.06 120.65 90)
+			(at 226.06 113.03 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)

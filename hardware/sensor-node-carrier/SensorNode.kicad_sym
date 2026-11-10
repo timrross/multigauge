@@ -85,7 +85,7 @@
 		(property "Value" "SN65HVD230 CAN module" (at -7.62 -7.62 0) (effects (font (size 1.27 1.27)) (justify left)))
 		(property "Footprint" "SensorNode:Module_SN65HVD230_1x04" (at 0 0 0) (hide yes) (effects (font (size 1.27 1.27))))
 		(property "Datasheet" "" (at 0 0 0) (hide yes) (effects (font (size 1.27 1.27))))
-		(property "Description" "Waveshare SN65HVD230 CAN transceiver module, 1x4 header" (at 0 0 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Description" "SN65HVD230 CAN transceiver module, 1x4 header" (at 0 0 0) (hide yes) (effects (font (size 1.27 1.27))))
 		(symbol "CAN_Module_0_1"
 			(rectangle (start -7.62 6.35) (end 7.62 -6.35) (stroke (width 0.254) (type default)) (fill (type background)))
 		)

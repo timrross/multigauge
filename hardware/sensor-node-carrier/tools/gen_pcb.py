@@ -19,7 +19,7 @@ def V(x, y): return pcbnew.VECTOR2I(mm(OX + x), mm(OY + y))
 
 # ref: (pad 1 x, pad 1 y, rotation)
 PLACE = {
-    "U1": (31.75, 2.54, 0), "U2": (19.05, 49.53, 90), "U3": (66.04, 30.48, 270), "U4": (57.15, 12.7, 270),
+    "U1": (31.75, 2.54, 0), "U2": (19.05, 49.53, 90), "U3": (63.5, 30.48, 270), "U4": (59.69, 12.7, 270),
     "J1": (13.97, 59.69, 0), "J2": (6.35, 12.7, 270), "J3": (64.77, 50.8, 90), "J4": (55.88, 27.94, 0),
     "L1": (10.16, 3.81, 0), "C1": (16.51, 12.7, 0), "C2": (25.4, 10.16, 270), "D1": (25.4, 20.32, 180),
     "C6": (26.67, 27.94, 0), "C5": (26.67, 31.75, 0), "C4": (26.67, 35.56, 0), "C3": (26.67, 39.37, 0),
@@ -30,7 +30,7 @@ PLACE = {
     "H1": (3.81, 3.81, 0), "H2": (81.28, 3.81, 0), "H3": (3.81, 62.23, 0), "H4": (81.28, 62.23, 0),
 }
 TP_LABEL = {"TP1": "5V", "TP2": "3V3", "TP3": "GND", "TP4": "A0", "TP5": "A1", "TP6": "A2", "TP7": "A3"}
-J1_LABEL = ["5V", "GND", "OILP", "BST", "OILT", "GND", "IAT", "GND", "5V", "GND", "SP1", "SP2"]
+J1_LABEL = ["5V", "GND", "OILP", "5V", "GND", "BST", "OILT", "GND", "IAT", "GND", "SP1", "SP2"]
 
 # ---- pad -> net from the schematic netlist (includes KiCad's names for unconnected pins)
 nl = parse(open(NETFILE).read())
@@ -83,7 +83,7 @@ for ref, (value, sym, fpid) in PARTS.items():
     if kind in ("TP", "H") or ref == "J1":
         fp.Reference().SetVisible(False)
     if ref == "C1":
-        fp.Reference().SetPosition(V(22.9, 17.5)); fp.Reference().SetTextSize(pcbnew.VECTOR2I(mm(0.8), mm(0.8))); fp.Reference().SetTextThickness(mm(0.12))
+        fp.Reference().SetPosition(V(21.9, 15.6)); fp.Reference().SetTextSize(pcbnew.VECTOR2I(mm(0.8), mm(0.8))); fp.Reference().SetTextThickness(mm(0.12))
     if kind == "TP":
         text(TP_LABEL[ref], px + 1.5, py, 0.8, just="left")
     for p in pads:
@@ -106,7 +106,8 @@ for i, s in enumerate(J1_LABEL):
     text(s, 13.97 + i * 5.08, 53.45, 0.8)
 text("+5V", 12.95, 12.7, 0.8, rot=90); text("GND", 12.95, 17.78, 0.8, rot=90)
 text("MultiGauge", 46.0, 42.6, 0.8); text("sensor node", 46.0, 44.3, 0.8); text("rev 2  2026-11", 46.0, 46.0, 0.8)
-for i, s in enumerate(("3V3", "GND", "SDA", "SCL")): text(s, 57.9, 27.94 + i * 2.54, 0.8, just="left")
+# J4 labels sit on the left of the header: the MAX31855 pin names take the space on its right.
+for i, s in enumerate(("3V3", "GND", "SDA", "SCL")): text(s, 54.2, 27.94 + i * 2.54, 0.8, just="right")
 text("J1", 7.9, 56.4, 0.8); text("LOOM", 7.9, 57.8, 0.8)
 
 # ============================================================ router
