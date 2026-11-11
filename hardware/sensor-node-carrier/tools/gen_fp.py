@@ -63,6 +63,24 @@ single("Module_MAX31855_1x06", "MAX31855 breakout on a 1x6 socket. Outline 19.5 
 # The pin row is taken as 1.5mm in from the end of the module.
 single("Module_SN65HVD230_1x04", "SN65HVD230 CAN module on a 1x4 socket. Outline 10 x 26mm as measured, screw terminal at the far edge",
        "SN65HVD230", U4_PINS, (-1.19, -24.5, 8.81, 1.5), "CAN")
+# ---- L1: radial drum inductor. Tim's part (ordered 2026-11-10) is 47uH, body 6mm diameter x 8mm tall, legs 3mm apart.
+# Holes are 3.175mm apart so both pads land on the router grid; the 1mm holes take 3mm legs without bending.
+def circle(cx, cy, r, layer, w=0.12):
+    return '\t(fp_circle (center %s %s) (end %s %s) (stroke (width %s) (type solid)) (fill no) (layer "%s"))' % (f(cx), f(cy), f(cx + r), f(cy), f(w), layer)
+
+# L1 is drawn for the 47uH "0810" drum inductor Tim ordered (2026-11-11): 8mm body, 10mm tall, legs 5mm apart.
+# The holes are 5.08mm apart to stay on the routing grid; that is 0.04mm per leg, well inside a 1mm hole.
+# Not yet checked against the real part.
+LP = 5.08
+lp = '\t(pad "%s" thru_hole circle (at %s 0) (size 1.8 1.8) (drill 1) (layers "*.Cu" "*.Mask"))'
+out = ['(footprint "L_Radial_D8.0mm_P5.08mm"', '\t(version 20241229)', '\t(generator "pcbnew")', '\t(generator_version "9.0")',
+       '\t(layer "F.Cu")', '\t(descr "Radial drum inductor, 8mm diameter, 5.08mm pitch (for 5mm legs)")', '\t(tags "inductor radial")',
+       '\t(property "Reference" "REF**" (at %s -5 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))' % f(LP / 2),
+       '\t(property "Value" "L" (at %s 5.2 0) (layer "F.Fab") (effects (font (size 1 1) (thickness 0.15))))' % f(LP / 2),
+       '\t(attr through_hole)',
+       circle(LP / 2, 0, 4.0, "F.SilkS"), circle(LP / 2, 0, 4.0, "F.Fab", 0.1), circle(LP / 2, 0, 4.25, "F.CrtYd", 0.05),
+       lp % ("1", "0"), lp % ("2", f(LP)), ')', '']
+open(OUT + "/SensorNode.pretty/L_Radial_D8.0mm_P5.08mm.kicad_mod", "w").write("\n".join(out))
 open(OUT + "/fp-lib-table", "w").write(
     '(fp_lib_table\n\t(version 7)\n\t(lib (name "SensorNode")(type "KiCad")(uri "${KIPRJMOD}/SensorNode.pretty")(options "")(descr "Sensor node module sockets"))\n)\n')
 print("footprints written")

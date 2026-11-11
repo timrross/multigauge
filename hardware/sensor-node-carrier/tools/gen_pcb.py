@@ -21,7 +21,7 @@ def V(x, y): return pcbnew.VECTOR2I(mm(OX + x), mm(OY + y))
 PLACE = {
     "U1": (31.75, 2.54, 0), "U2": (19.05, 49.53, 90), "U3": (63.5, 30.48, 270), "U4": (59.69, 12.7, 270),
     "J1": (13.97, 59.69, 0), "J2": (6.35, 12.7, 270), "J3": (64.77, 50.8, 90), "J4": (55.88, 27.94, 0),
-    "L1": (10.16, 3.81, 0), "C1": (16.51, 12.7, 0), "C2": (25.4, 10.16, 270), "D1": (25.4, 20.32, 180),
+    "L1": (11.43, 5.08, 0), "C1": (16.51, 12.7, 0), "C2": (25.4, 10.16, 270), "D1": (25.4, 20.32, 180),
     "C6": (26.67, 27.94, 0), "C5": (26.67, 31.75, 0), "C4": (26.67, 35.56, 0), "C3": (26.67, 39.37, 0),
     "TP7": (35.56, 27.94, 0), "TP6": (35.56, 31.75, 0), "TP5": (35.56, 35.56, 0), "TP4": (35.56, 39.37, 0),
     "R8": (50.8, 27.94, 180), "R6": (40.64, 31.75, 0), "R7": (50.8, 35.56, 180), "R5": (40.64, 39.37, 0),
@@ -82,6 +82,8 @@ for ref, (value, sym, fpid) in PARTS.items():
         fp.Reference().SetTextSize(pcbnew.VECTOR2I(mm(0.8), mm(0.8))); fp.Reference().SetTextThickness(mm(0.12))
     if kind in ("TP", "H") or ref == "J1":
         fp.Reference().SetVisible(False)
+    if ref == "L1":   # no room for the label between the two pads: put it beside the body
+        fp.Reference().SetPosition(V(19.6, 5.08))
     if ref == "C1":
         fp.Reference().SetPosition(V(21.9, 15.6)); fp.Reference().SetTextSize(pcbnew.VECTOR2I(mm(0.8), mm(0.8))); fp.Reference().SetTextThickness(mm(0.12))
     if kind == "TP":
@@ -103,7 +105,7 @@ for ref, (value, sym, fpid) in PARTS.items():
 
 # ---- board silk
 for i, s in enumerate(J1_LABEL):
-    text(s, 13.97 + i * 5.08, 53.45, 0.8)
+    text(s, 13.97 + i * 5.0, 53.45, 0.8)
 text("+5V", 12.95, 12.7, 0.8, rot=90); text("GND", 12.95, 17.78, 0.8, rot=90)
 text("MultiGauge", 46.0, 42.6, 0.8); text("sensor node", 46.0, 44.3, 0.8); text("rev 2  2026-11", 46.0, 46.0, 0.8)
 # J4 labels sit on the left of the header: the MAX31855 pin names take the space on its right.
@@ -238,7 +240,12 @@ def commit(net, path, hw):
 
 def route_net(net, hw):
     pads = [p for p in PADS if p["net"] == net]
-    for p in pads: assert abs(p["x"] - p["node"][0] * P) < 0.02 and abs(p["y"] - p["node"][1] * P) < 0.02, p
+    for p in pads:
+        # A pad may sit off the grid (5.0mm pitch terminals) as long as a track ending on the nearest
+        # grid node still lies wholly inside the pad copper.
+        off = math.hypot(p["x"] - p["node"][0] * P, p["y"] - p["node"][1] * P)
+        inner = p["r"] if p["shape"] == "c" else min(p["hx"], p["hy"])
+        assert off < 0.02 or off + hw + 0.2 <= inner, p
     tree = set((pads[0]["node"][0], pads[0]["node"][1], l) for l in (0, 1))
     todo = set(p["node"] for p in pads[1:]) - set([pads[0]["node"]])
     n0 = len(tracks); v0 = len(vias)

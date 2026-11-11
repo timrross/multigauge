@@ -7084,7 +7084,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Inductor_THT:L_Axial_L12.0mm_D5.0mm_P15.24mm_Horizontal_Fastron_MISC"
+		(property "Footprint" "SensorNode:L_Radial_D8.0mm_P5.08mm"
 			(at 44.45 38.1 90)
 			(hide yes)
 			(show_name no)
@@ -8815,7 +8815,7 @@
 				)
 			)
 		)
-		(property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-12-5.08_1x12_P5.08mm_Horizontal"
+		(property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-12_1x12_P5.00mm_Horizontal"
 			(at 236.22 115.57 0)
 			(hide yes)
 			(show_name no)
@@ -10705,7 +10705,7 @@
 				)
 			)
 		)
-		(property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal"
+		(property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal"
 			(at 25.4 38.1 0)
 			(hide yes)
 			(show_name no)
