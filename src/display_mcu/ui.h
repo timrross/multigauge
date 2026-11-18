@@ -21,4 +21,9 @@ void setConnectionStatus(bool connected);
 // Update all sensors from SensorData struct
 void updateUI(const SensorData& data);
 
+#ifdef DEMO_MODE
+// Demo builds only: change view as a left swipe would. Call with the GUI mutex held.
+void demoNextView();
+#endif
+
 #endif // UI_H

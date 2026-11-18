@@ -574,12 +574,12 @@ esp_lcd_panel_handle_t Arduino_RGB_Display::getPanelHandle()
   return _rgbpanel->getPanelHandle();
 }
 
-void Arduino_RGB_Display::flipFramebuffer(uint16_t *fb)
+bool Arduino_RGB_Display::flipFramebuffer(uint16_t *fb)
 {
   // Hand the buffer to the RGB peripheral. Because `fb` is one of the panel's
   // own framebuffers, esp_lcd does a zero-copy switch and starts scanning it at
   // the next VSYNC. The full panel rectangle is required for the switch.
-  esp_lcd_panel_draw_bitmap(_rgbpanel->getPanelHandle(), 0, 0, _fb_width, _fb_height, fb);
+  return esp_lcd_panel_draw_bitmap(_rgbpanel->getPanelHandle(), 0, 0, _fb_width, _fb_height, fb) == ESP_OK;
 }
 
 #endif // #if defined(ESP32) && (CONFIG_IDF_TARGET_ESP32S3)

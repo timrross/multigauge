@@ -8,7 +8,8 @@
 
 // Image declarations (in assets folder)
 LV_IMG_DECLARE(gauge_active_v2);
-LV_IMG_DECLARE(needle);
+LV_IMG_DECLARE(needle_tip);
+LV_IMG_DECLARE(circle_shadow);
 
 // Screens
 lv_obj_t *splash_screen = NULL;
@@ -32,12 +33,27 @@ static int current_view = 0;  // 0=grid, 1=oil press, 2=oil temp, 3=EGT, 4=inter
 static lv_obj_t *circle = NULL;
 static lv_obj_t *solo_value_label = NULL;
 
+// Needle image placement, printed by assets/tools/make_gauge_assets.py
+#define NEEDLE_X_OFFSET  182   // image centre, right of the screen centre
+#define NEEDLE_PIVOT_X  -128   // the gauge centre, relative to the image's left edge
+#define NEEDLE_PIVOT_Y    10
+
+// Two drawing options. Measured 2026-11-18 with the short needle image: switching
+// both off gained about one frame a second, so both stay on.
+#define SHOW_GHOST_NEEDLE  1   // peak-boost ghost needle
+#define NEEDLE_SMOOTHING   1   // smoothed (antialiased) needle edges
+
 // Ghost needle (peak boost indicator)
 static lv_obj_t *ghostNeedleImg = NULL;
-static int peakMbar = 0;
-static unsigned long peakTimestamp = 0;
+static int peakMbar = 0;                 // the held peak, only meaningful while peakActive
+static unsigned long peakTimestamp = 0;  // when the peak was last raised
+static bool peakActive = false;          // a peak is being held and shown
+static int troughMbar = 0;               // lowest reading since the last peak expired
 static int ghostAngle = 1350;
 #define PEAK_HOLD_MS 5000
+// After a peak expires, boost has to climb this far above its lowest point before
+// a new peak starts. Stops sensor noise on a falling needle from registering one.
+#define PEAK_MIN_RISE_MBAR 50
 // Below this the "peak" is just ADC noise at idle; keep the ghost hidden
 // rather than drawing it under the resting needle.
 #define GHOST_MIN_MBAR 50
@@ -128,7 +144,11 @@ void create_fps_label(lv_obj_t *parent) {
   lv_style_set_text_font(&style_label, &lv_font_montserrat_14);
 
   fps_label = lv_label_create(parent);
-  lv_label_set_text(fps_label, "FPS: 0");
+  #ifdef DEMO_MODE
+    lv_label_set_text(fps_label, "DEMO FPS: 0");
+  #else
+    lv_label_set_text(fps_label, "FPS: 0");
+  #endif
   lv_obj_add_style(fps_label, &style_label, LV_PART_MAIN);
   lv_obj_align(fps_label, LV_ALIGN_CENTER, 0, 100);
 }
@@ -160,7 +180,12 @@ void setConnectionStatus(bool connected) {
 void update_fps_label(lv_timer_t *timer) {
   uint32_t fps = getAndResetFlushCount();
   char fps_text[16];
-  snprintf(fps_text, sizeof(fps_text), "FPS: %u", (unsigned int)fps);
+  #ifdef DEMO_MODE
+    // Always on screen in a demo build, so made-up readings are never taken for real ones.
+    snprintf(fps_text, sizeof(fps_text), "DEMO FPS: %u", (unsigned int)fps);
+  #else
+    snprintf(fps_text, sizeof(fps_text), "FPS: %u", (unsigned int)fps);
+  #endif
   lv_label_set_text(fps_label, fps_text);
 }
 
@@ -329,6 +354,15 @@ static void gesture_event_cb(lv_event_t *e) {
   }
 }
 
+#ifdef DEMO_MODE
+// Demo builds only: change view as a left swipe would. Call with the GUI mutex held.
+void demoNextView() {
+  if (animating) return;
+  current_view = (current_view + 1) % 5;
+  switchView(current_view, LV_DIR_LEFT);
+}
+#endif
+
 static bool isWarning(int sensor, double value) {
   if (isnan(value)) return false;
   switch (sensor) {
@@ -428,19 +462,35 @@ void createGaugeScreen() {
   lv_image_set_src(background, &gauge_active_v2);
   lv_obj_set_size(background, 480, 480);
 
+  // Both needles use needle_tip: only the part of the needle outside the centre
+  // circle. The pivot (the gauge centre) is off the left end of the image. A
+  // full-length needle made LVGL redraw about five times more screen per move,
+  // including the circle. See assets/tools/make_gauge_assets.py.
   ghostNeedleImg = lv_image_create(gauge_screen);
-  lv_image_set_src(ghostNeedleImg, &needle);
-  lv_obj_align(ghostNeedleImg, LV_ALIGN_CENTER, 116, 0);
-  lv_image_set_pivot(ghostNeedleImg, 3, 10);
+  lv_image_set_src(ghostNeedleImg, &needle_tip);
+  lv_obj_align(ghostNeedleImg, LV_ALIGN_CENTER, NEEDLE_X_OFFSET, 0);
+  lv_image_set_pivot(ghostNeedleImg, NEEDLE_PIVOT_X, NEEDLE_PIVOT_Y);
   lv_image_set_rotation(ghostNeedleImg, 1350);
   lv_obj_set_style_image_opa(ghostNeedleImg, LV_OPA_40, LV_PART_MAIN);
   lv_obj_add_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
 
   needleImg = lv_image_create(gauge_screen);
-  lv_image_set_src(needleImg, &needle);
-  lv_obj_align(needleImg, LV_ALIGN_CENTER, 116, 0);
-  lv_image_set_pivot(needleImg, 3, 10);
+  lv_image_set_src(needleImg, &needle_tip);
+  lv_obj_align(needleImg, LV_ALIGN_CENTER, NEEDLE_X_OFFSET, 0);
+  lv_image_set_pivot(needleImg, NEEDLE_PIVOT_X, NEEDLE_PIVOT_Y);
   lv_image_set_rotation(needleImg, 1350);
+  lv_image_set_antialias(needleImg, NEEDLE_SMOOTHING);
+  lv_image_set_antialias(ghostNeedleImg, NEEDLE_SMOOTHING);
+
+  // Soft shadow around the centre circle, drawn over the needles so the circle
+  // looks raised above them. It is a fixed alpha-only image tinted black. LVGL's
+  // shadow style is not used: it rebuilds a 45 KB blur on every redraw, which
+  // cost about 40 ms a frame and once ran LVGL out of memory.
+  lv_obj_t *shadow = lv_image_create(gauge_screen);
+  lv_image_set_src(shadow, &circle_shadow);
+  lv_obj_set_style_image_recolor(shadow, lv_color_black(), LV_PART_MAIN);
+  lv_obj_set_style_image_recolor_opa(shadow, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_center(shadow);
 
   // Create center circle
   static lv_style_t style_circle;
@@ -449,11 +499,6 @@ void createGaugeScreen() {
   lv_style_set_bg_color(&style_circle, lv_color_black());
   lv_style_set_border_color(&style_circle, lv_color_white());
   lv_style_set_border_width(&style_circle, 4);
-  lv_style_set_shadow_width(&style_circle, 10);
-  lv_style_set_shadow_color(&style_circle, lv_color_black());
-  lv_style_set_shadow_spread(&style_circle, 0);
-  lv_style_set_shadow_ofs_x(&style_circle, 0);
-  lv_style_set_shadow_ofs_y(&style_circle, 0);
 
   circle = lv_obj_create(gauge_screen);
   lv_obj_add_style(circle, &style_circle, 0);
@@ -487,19 +532,33 @@ void initUI() {
 }
 
 static void updatePeakBoost(int mbar) {
+  // The ghost marks a real high. Every new high restarts the hold timer. When the
+  // hold runs out the ghost is dropped, and nothing registers again until boost
+  // has turned round and climbed. (It used to re-register at whatever the needle
+  // read when the timer ran out, which put a ghost halfway down a falling sweep.)
   unsigned long now = millis();
-  if (mbar >= peakMbar) {
-    peakMbar = mbar;
-    peakTimestamp = now;
-  } else if (now - peakTimestamp >= PEAK_HOLD_MS) {
-    peakMbar = mbar;
-    peakTimestamp = now;
+  if (peakActive) {
+    if (mbar >= peakMbar) {
+      peakMbar = mbar;
+      peakTimestamp = now;
+    } else if (now - peakTimestamp >= PEAK_HOLD_MS) {
+      peakActive = false;
+      troughMbar = mbar;
+    }
+  } else {
+    if (mbar < troughMbar) {
+      troughMbar = mbar;
+    } else if (mbar >= troughMbar + PEAK_MIN_RISE_MBAR) {
+      peakActive = true;
+      peakMbar = mbar;
+      peakTimestamp = now;
+    }
   }
 }
 
 static void updateGhostNeedle() {
   if (ghostNeedleImg == NULL) return;
-  if (peakMbar < GHOST_MIN_MBAR) {
+  if (!SHOW_GHOST_NEEDLE || !peakActive || peakMbar < GHOST_MIN_MBAR) {
     if (!lv_obj_has_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN)) {
       lv_obj_add_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
     }

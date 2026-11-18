@@ -166,7 +166,7 @@ Not done, on purpose:
 - No watchdog on the display node. A false trigger there would reboot the screen while driving, and its timing under LVGL has not been measured.
 - The heartbeat fault bits are received and logged but not shown on screen.
 - The BMP280 is still unimplemented on both nodes (library in `lib_deps`, `ENABLE_ATMOS_SENSOR` 0).
-- The display's TWAI pins (GP16 TX, GP17 RX) still need checking against the real wiring.
+- Tear-free rendering (commit `1e85779`) was checked on the screen on 2026-11-18 with a demo build, and the drawing was sped up from about 8 to about 40 frames a second (the panel's maximum): the centre circle's shadow is now a fixed image, the needle image only covers the part outside the circle, and LVGL's memory pool is 128 KB after a view change ran it out of memory. `pio run -e display_demo -t upload` flashes the demo: made-up values at engine-like speeds, CAN off, "DEMO" next to the FPS count, and a `TIMING` line on serial once a second. Flash `display_mcu` again afterwards. The normal firmware has the same changes but has not been run since.
 
 Bench test order: ADS1115 alone with a potentiometer on each input (use the test points), then real sensors at room temperature against the voltages in section 5, then CAN between the two nodes with both 120 ohm terminations fitted. With power off and both nodes connected, a multimeter across CANH and CANL should read about 60 ohm.
 
@@ -354,7 +354,7 @@ Things to check before ordering rev 3:
 - [ ] **Boost sensor.** Confirm on the bench that it runs from 5V, never outputs above 5V, and whether it reads absolute or gauge pressure.
 - [ ] **Module pin direction.** The MAX31855 has a right-angle header (seen in photos, 2026-11-10). The board assumes straight pins with the module lying flat. Preferred fix: swap its header for straight pins, which needs no board change. In a straight socket as it is, the module would stand on edge, held only by six pins with the thermocouple cable pulling on the top. The CAN module also has a right-angle header (Tim, 2026-11-10) and gets the same fix. Its pin order is confirmed. Modules plug into female header sockets on the carrier, with the far edge of each single-row module propped and glued.
 - [x] **L1.** Measured 2026-11-18: 0.6 ohm on the meter with 0.4 ohm of lead resistance, so about 0.2 ohm (0.1 to 0.3 given the meter's one decimal place). Under the 0.5 ohm limit. At about 100 mA that is a 20 to 30 mV drop.
-- [ ] **Display node TWAI pins** verified against the real wiring.
+- [x] **Display node TWAI pins.** Tim reports CAN worked between the two nodes on the bench with the display wired as it is now (2026-11-18), so GP16 TX and GP17 RX stay.
 - [ ] **Trim the stray braid strand** at the MAX31855 thermocouple terminal.
 - [ ] **Engine bay housing** for the sensor node, to be modelled and printed in ASA-CF. Cable entries: loom at the bottom edge, CAN and thermocouple at the right edge, 5V at the left edge, USB at the top edge.
 - [ ] **Firmware changes** in section 6.

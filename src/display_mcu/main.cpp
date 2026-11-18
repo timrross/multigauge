@@ -66,6 +66,41 @@ void Task_LVGL(void *pvParameters) {
   }
 }
 
+#ifdef DEMO_MODE
+// ============================================================
+// Task: Demo data (Core 1), built with: pio run -e display_demo
+//
+// Stands in for the CAN receiver so the display can be checked with no sensor
+// node. Every value swings smoothly between two limits, each at its own speed.
+// The readouts move about as slowly as they would on a running engine (a few
+// changed digits a second in total), so the frame rate is like normal use. Each
+// starts at its low limit, like a cold start. The limits still cross the three
+// warning thresholds in ui.cpp, but only every few minutes.
+// CAN is never started in this build.
+// ============================================================
+
+// Smooth swing from lo to hi and back once every periodMs.
+static double demoWave(uint32_t now, uint32_t periodMs, double lo, double hi) {
+  double phase = (now % periodMs) / (double)periodMs;
+  return lo + (hi - lo) * 0.5 * (1.0 - cos(2.0 * M_PI * phase));
+}
+
+void Task_Demo(void *pvParameters) {
+  while (1) {
+    uint32_t now = millis();
+    if (xSemaphoreTake(sensor_data_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      sensorData.boostPressure          = demoWave(now, 12000,   0.0,  29.0);  // psi, the full gauge
+      sensorData.oilPressure            = demoWave(now,  60000,   0.5,   4.5);  // bar, red below 0.8
+      sensorData.oilTemperature         = demoWave(now, 240000,  70.0, 135.0);  // C, red above 130
+      sensorData.egt                    = demoWave(now, 400000, 300.0, 720.0);  // C, red above 700
+      sensorData.intercoolerTemperature = demoWave(now, 300000,  15.0,  60.0);  // C
+      xSemaphoreGive(sensor_data_mutex);
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+#endif
+
 // ============================================================
 // Task: CAN Receiver (Core 1)
 // ============================================================
@@ -101,15 +136,30 @@ void Task_Screen_Update(void *pvParameters) {
     }
 
     // Check connection status
-    bool connected = isSensorConnected();
+    #ifdef DEMO_MODE
+      bool connected = true;
+    #else
+      bool connected = isSensorConnected();
+    #endif
 
     // Update UI with local copy (GUI mutex for LVGL)
     if (xSemaphoreTake(gui_mutex, portMAX_DELAY) == pdTRUE) {
       updateUI(localData);
       setConnectionStatus(connected);
+      #if defined(DEMO_MODE) && defined(DEMO_AUTO_SWIPE_MS)
+        // Diagnostic: change view by itself every DEMO_AUTO_SWIPE_MS.
+        static uint32_t lastAutoSwipe = 0;
+        if (millis() - lastAutoSwipe >= DEMO_AUTO_SWIPE_MS) {
+          lastAutoSwipe = millis();
+          demoNextView();
+        }
+      #endif
       xSemaphoreGive(gui_mutex);
     }
-    vTaskDelay(pdMS_TO_TICKS(25));  // Update UI at ~40Hz
+    // The panel refreshes every 25 ms. Updating a little faster than that means
+    // every refresh has a fresh needle position (at 25 ms the two drifted in and
+    // out of step and some refreshes had nothing new to show).
+    vTaskDelay(pdMS_TO_TICKS(20));  // Update UI at ~50Hz
   }
 }
 
@@ -145,11 +195,15 @@ void setup() {
     fatal("Mutex creation failed");
   }
 
-  // Initialize CAN bus
-  if (!initCAN()) {
-    fatal("CAN initialization failed");
-  }
-  DEBUG_PRINTLN("CAN initialized at 500 kbit/s");
+  #ifdef DEMO_MODE
+    DEBUG_PRINTLN("DEMO MODE: showing made-up values, CAN is off");
+  #else
+    // Initialize CAN bus
+    if (!initCAN()) {
+      fatal("CAN initialization failed");
+    }
+    DEBUG_PRINTLN("CAN initialized at 500 kbit/s");
+  #endif
 
   // Create FreeRTOS tasks
   bool ok = xTaskCreatePinnedToCore(
@@ -163,8 +217,13 @@ void setup() {
   ) == pdPASS;
 
   ok = ok && xTaskCreatePinnedToCore(
-    Task_CAN_Receive,
-    "Task_CAN_RX",
+    #ifdef DEMO_MODE
+      Task_Demo,
+      "Task_Demo",
+    #else
+      Task_CAN_Receive,
+      "Task_CAN_RX",
+    #endif
     1024 * 4,  // prints in debug builds, and printf alone needs about 1.5 KB
     NULL,
     2,

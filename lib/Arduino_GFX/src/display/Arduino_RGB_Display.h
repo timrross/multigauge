@@ -2484,7 +2484,7 @@ public:
     // one of the panel's own framebuffers). getPanelHandle() exposes the
     // esp_lcd handle so the app can register the VSYNC callback.
     uint16_t *getBackFramebuffer();
-    void flipFramebuffer(uint16_t *fb);
+    bool flipFramebuffer(uint16_t *fb); // false if the panel driver refused the flip
     esp_lcd_panel_handle_t getPanelHandle();
 
 protected:

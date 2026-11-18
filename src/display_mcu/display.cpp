@@ -44,6 +44,9 @@ lv_color_t *disp_draw_buf;
 #if LV_USE_LOG != 0
   void my_print(lv_log_level_t level, const char *buf) {
     LV_UNUSED(level);
+    #if DEBUG
+      Serial.print(buf);
+    #endif
   }
 #endif
 
@@ -67,6 +70,13 @@ uint32_t millis_cb(void) {
 static SemaphoreHandle_t sem_vsync_end = NULL;  // given by ISR after our frame's VSYNC
 static SemaphoreHandle_t sem_gui_ready = NULL;   // armed by flush before it waits
 
+// True while flushes wait for VSYNC. Stays false if the handshake could not be
+// set up, and is switched off if VSYNC stops arriving, so that fault costs
+// tearing rather than a UI stuck at under 10 frames a second.
+static bool vsync_wait_enabled = false;
+static uint8_t vsync_timeouts = 0;        // consecutive flushes that timed out
+#define VSYNC_MAX_TIMEOUTS 5
+
 static bool IRAM_ATTR on_vsync_event(esp_lcd_panel_handle_t panel,
                                      const esp_lcd_rgb_panel_event_data_t *edata,
                                      void *user_ctx) {
@@ -78,22 +88,81 @@ static bool IRAM_ATTR on_vsync_event(esp_lcd_panel_handle_t panel,
 }
 #endif
 
+#ifdef DISPLAY_TIMING
+// ============================================================
+// Diagnostics (-D DISPLAY_TIMING): once a second, print where each frame's time
+// goes, LVGL's heap use, and why the chip last reset.
+//   draw = LVGL refresh start to the last flush (buffer sync + rendering)
+//   flip = handing the buffer to the panel driver (includes the cache write-back)
+//   wait = waiting for VSYNC after the flip
+// ============================================================
+#include <esp_system.h>
+static uint32_t tm_refr_start_us = 0;
+static uint32_t tm_draw_us = 0, tm_flip_us = 0, tm_wait_us = 0, tm_px = 0;
+static uint32_t tm_frames = 0, tm_timeouts = 0, tm_last_print_ms = 0;
+
+static void timing_refr_start_cb(lv_event_t *e) {
+  tm_refr_start_us = micros();
+}
+
+static void timing_report() {
+  uint32_t now = millis();
+  if (now - tm_last_print_ms < 1000 || tm_frames == 0) return;
+  lv_mem_monitor_t mon;
+  lv_mem_monitor(&mon);
+  Serial.printf("TIMING fps=%u draw=%.1fms flip=%.1fms wait=%.1fms timeouts=%u kpx=%u | lv_heap free=%u biggest=%u max_used=%u | reset=%d up=%us\n",
+                (unsigned)tm_frames,
+                tm_draw_us / 1000.0f / tm_frames, tm_flip_us / 1000.0f / tm_frames, tm_wait_us / 1000.0f / tm_frames,
+                (unsigned)tm_timeouts, (unsigned)(tm_px / 1000 / tm_frames),
+                (unsigned)mon.free_size, (unsigned)mon.free_biggest_size, (unsigned)mon.max_used,
+                (int)esp_reset_reason(), (unsigned)(now / 1000));
+  tm_draw_us = tm_flip_us = tm_wait_us = tm_px = tm_frames = tm_timeouts = 0;
+  tm_last_print_ms = now;
+}
+#endif
+
 /* LVGL calls it when a rendered frame is ready to be shown */
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
+  #ifdef DISPLAY_TIMING
+    tm_px += lv_area_get_size(area);
+    uint32_t tm_t0 = micros(), tm_t1 = tm_t0, tm_t2 = tm_t0;
+  #endif
   #ifdef DIRECT_MODE
     // Only act on the final flush of the refresh: px_map then holds the fully
     // rendered frame to display. Earlier flushes (disjoint dirty areas) already
     // landed in the same buffer, so there is nothing to do for them.
     if (lv_display_flush_is_last(disp)) {
-      gfx->flipFramebuffer((uint16_t *)px_map);  // switch to this buffer at next VSYNC
-      if (sem_gui_ready != NULL && sem_vsync_end != NULL) {
+      // Switch to this buffer at the next VSYNC.
+      bool flipped = gfx->flipFramebuffer((uint16_t *)px_map);
+      #ifdef DISPLAY_TIMING
+        tm_t1 = micros();
+      #endif
+      #if DEBUG
+        static bool flip_fail_logged = false;
+        if (!flipped && !flip_fail_logged) {
+          flip_fail_logged = true;
+          Serial.println("Display: framebuffer flip failed");
+        }
+      #endif
+      if (flipped && vsync_wait_enabled) {
         // Drain any leftover give from a previously timed-out wait so we don't
         // sail through the wait below without an actual VSYNC.
         xSemaphoreTake(sem_vsync_end, 0);
         xSemaphoreGive(sem_gui_ready);  // arm the handshake
-        // Wait for the flip to take effect. Generous timeout (~5 frames) so a
-        // missing/misbehaving VSYNC degrades to tearing instead of a frozen UI.
-        xSemaphoreTake(sem_vsync_end, pdMS_TO_TICKS(100));
+        // Wait for the flip to take effect. The panel refreshes about every
+        // 25 ms (12 MHz pixel clock), so 100 ms is about 4 frames.
+        if (xSemaphoreTake(sem_vsync_end, pdMS_TO_TICKS(100)) == pdTRUE) {
+          vsync_timeouts = 0;
+        } else if (
+          #ifdef DISPLAY_TIMING
+            ++tm_timeouts &&
+          #endif
+          ++vsync_timeouts >= VSYNC_MAX_TIMEOUTS) {
+          vsync_wait_enabled = false;  // VSYNC is not arriving: stop waiting for it
+          #if DEBUG
+            Serial.println("Display: no VSYNC, running unsynchronized");
+          #endif
+        }
       }
       flush_count++;
     }
@@ -103,6 +172,20 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
     if (lv_display_flush_is_last(disp)) {
       flush_count++;
+    }
+  #endif
+
+  #ifdef DISPLAY_TIMING
+    if (lv_display_flush_is_last(disp)) {
+      tm_t2 = micros();
+      #ifndef DIRECT_MODE
+        tm_t1 = tm_t2;  // partial mode: the copy to the panel counts as "flip"
+      #endif
+      tm_draw_us += tm_t0 - tm_refr_start_us;
+      tm_flip_us += tm_t1 - tm_t0;
+      tm_wait_us += tm_t2 - tm_t1;
+      tm_frames++;
+      timing_report();
     }
   #endif
 
@@ -158,15 +241,19 @@ void initLVGL() {
     lv_color_t *disp_draw_buf2 = (lv_color_t *)gfx->getFramebuffer();
 
     // VSYNC handshake used by my_disp_flush() to wait out each flip. If either
-    // semaphore can't be created, skip the callback and run unsynchronized
-    // (tearing instead of a NULL deref in the ISR).
+    // semaphore can't be created or the callback can't be registered, run
+    // unsynchronized (tearing instead of a NULL deref in the ISR or a stalled UI).
     sem_vsync_end = xSemaphoreCreateBinary();
     sem_gui_ready = xSemaphoreCreateBinary();
     if (sem_vsync_end != NULL && sem_gui_ready != NULL) {
       esp_lcd_rgb_panel_event_callbacks_t cbs = {};
       cbs.on_vsync = on_vsync_event;
-      esp_lcd_rgb_panel_register_event_callbacks(gfx->getPanelHandle(), &cbs, NULL);
+      vsync_wait_enabled =
+        esp_lcd_rgb_panel_register_event_callbacks(gfx->getPanelHandle(), &cbs, NULL) == ESP_OK;
     }
+    #if DEBUG
+      if (!vsync_wait_enabled) Serial.println("Display: VSYNC handshake not set up, running unsynchronized");
+    #endif
   #else
     bufSize = screenWidth * 80;
     #ifdef ESP32
@@ -191,6 +278,9 @@ void initLVGL() {
   } else {
     disp = lv_display_create(screenWidth, screenHeight);
     lv_display_set_flush_cb(disp, my_disp_flush);
+    #ifdef DISPLAY_TIMING
+      lv_display_add_event_cb(disp, timing_refr_start_cb, LV_EVENT_REFR_START, NULL);
+    #endif
     #ifdef DIRECT_MODE
       lv_display_set_buffers(disp, disp_draw_buf, disp_draw_buf2, bufSize * 2, LV_DISPLAY_RENDER_MODE_DIRECT);
     #else
