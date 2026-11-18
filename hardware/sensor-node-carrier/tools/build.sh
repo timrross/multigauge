@@ -21,3 +21,6 @@ rm -rf out/gerbers out/$N-gerbers.zip; mkdir -p out/gerbers
 kicad-cli pcb export gerbers -o out/gerbers/ --layers F.Cu,B.Cu,F.Mask,B.Mask,F.SilkS,B.SilkS,Edge.Cuts --subtract-soldermask --check-zones $N.kicad_pcb >/dev/null 2>&1
 kicad-cli pcb export drill -o out/gerbers/ --format excellon --excellon-separate-th --excellon-units mm $N.kicad_pcb >/dev/null 2>&1
 (cd out/gerbers && zip -q ../$N-gerbers.zip *.g* *.drl) && echo "Gerbers: out/$N-gerbers.zip"
+# Printouts: the schematic, and the board at 1:1 for the paper test fit (print at 100%, no "fit to page").
+kicad-cli sch export pdf -o out/schematic.pdf $N.kicad_sch >/dev/null 2>&1 && echo "Schematic: out/schematic.pdf"
+kicad-cli pcb export pdf --mode-single -l "F.Mask,F.SilkS,Edge.Cuts" --scale 1 --drill-shape-opt 2 --black-and-white -o out/paper-test-fit-1to1.pdf $N.kicad_pcb >/dev/null 2>&1 && echo "Paper fit: out/paper-test-fit-1to1.pdf"
