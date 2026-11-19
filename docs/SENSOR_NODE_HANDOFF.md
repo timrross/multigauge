@@ -160,6 +160,7 @@ What changed on the display node:
 - Readouts turn red past a warning threshold: oil pressure below 0.8 bar, oil temp above 130C, EGT above 700C. These are starting values in `src/display_mcu/ui.cpp` and need tuning to the engine. Oil pressure is also red with the engine off, like an oil light.
 - Short, remote and extended frames are ignored. Sensor node reboots and missed heartbeats are logged in debug builds.
 - The connection dot is only redrawn when it changes. One LVGL call at boot now takes the GUI mutex.
+- The boost needle glides between readings instead of jumping to each one (added 2026-11-19, `src/display_mcu/needle_glide.h`). The sensor node sends boost about 9 times a second, which on its own gives 9 needle moves a second however fast the screen draws. With the glide the needle moves on every screen refresh (about 40 a second) and trails the readings by about 0.15 s. It times the readings itself, so sending boost more often from the sensor node would shorten that lag with no change on the display. Checked on the demo build only, which now feeds boost at the sensor node's rate.
 
 Not done, on purpose:
 

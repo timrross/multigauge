@@ -9,7 +9,9 @@ void initUI();
 void showGaugeScreen();
 
 // Update individual sensor displays
-void setBoostPressure(double value);
+// Boost is called on every screen update so the needle can glide between readings.
+// readingMs is when the reading arrived (millis).
+void setBoostPressure(double value, uint32_t readingMs);
 void setOilTemperature(double value);
 void setOilPressure(double value);
 void setEgt(double value);

@@ -5,6 +5,7 @@
 #include "sensor_types.h"
 #include "display.h"
 #include "ui.h"
+#include "needle_glide.h"
 
 // Image declarations (in assets folder)
 LV_IMG_DECLARE(gauge_active_v2);
@@ -38,10 +39,20 @@ static lv_obj_t *solo_value_label = NULL;
 #define NEEDLE_PIVOT_X  -128   // the gauge centre, relative to the image's left edge
 #define NEEDLE_PIVOT_Y    10
 
-// Two drawing options. Measured 2026-11-18 with the short needle image: switching
-// both off gained about one frame a second, so both stay on.
+// Drawing options. Measured 2026-11-18 with the short needle image: switching the
+// ghost and the smoothing off gained about one frame a second, so both stay on.
 #define SHOW_GHOST_NEEDLE  1   // peak-boost ghost needle
 #define NEEDLE_SMOOTHING   1   // smoothed (antialiased) needle edges
+// Move the needle smoothly between boost readings (see needle_glide.h). With 0 it
+// jumps to each reading as it arrives, which is only about 9 moves a second.
+// Can also be set from the command line with -D NEEDLE_GLIDE=0.
+#ifndef NEEDLE_GLIDE
+#define NEEDLE_GLIDE       1
+#endif
+
+// Boost needle
+static NeedleGlide needleGlide;
+static int needleAngle = 1350;           // as drawn, in tenths of a degree
 
 // Ghost needle (peak boost indicator)
 static lv_obj_t *ghostNeedleImg = NULL;
@@ -57,9 +68,13 @@ static int ghostAngle = 1350;
 // Below this the "peak" is just ADC noise at idle; keep the ghost hidden
 // rather than drawing it under the resting needle.
 #define GHOST_MIN_MBAR 50
+// The ghost is only drawn once the needle has dropped this far below it, in tenths
+// of a degree. Any closer and all but a pixel of it is behind the needle, and
+// drawing it there cost about 3 ms a frame all the way up every boost rise
+// (measured 2026-11-19).
+#define GHOST_MIN_GAP 3
 
 // Last displayed values for change detection
-int boostPressure = -1;
 // One entry per numeric readout. The order matches the solo views (current_view - 1).
 enum { SENSOR_OIL_PRESSURE = 0, SENSOR_OIL_TEMP, SENSOR_EGT, SENSOR_INTAKE, SENSOR_COUNT };
 #define FORCE_REDRAW    INT_MIN         // nothing drawn yet for this label
@@ -556,41 +571,62 @@ static void updatePeakBoost(int mbar) {
   }
 }
 
+// Needle angle for a boost value, in tenths of a degree: 135 degrees at zero,
+// sweeping 270 degrees round to 2000 mbar.
+static int boostAngle(float mbar) {
+  return 1350 + (int)lroundf(mbar * (2700.0f / 2000.0f));
+}
+
 static void updateGhostNeedle() {
   if (ghostNeedleImg == NULL) return;
-  if (!SHOW_GHOST_NEEDLE || !peakActive || peakMbar < GHOST_MIN_MBAR) {
+  int angle = boostAngle(peakMbar);
+  bool show = SHOW_GHOST_NEEDLE && peakActive && peakMbar >= GHOST_MIN_MBAR &&
+              angle - needleAngle >= GHOST_MIN_GAP;
+  if (!show) {
     if (!lv_obj_has_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN)) {
       lv_obj_add_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
     }
     return;
   }
-  if (lv_obj_has_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN)) {
-    lv_obj_clear_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
-  }
-  int angle = 1350 + (int)((peakMbar * 2700.0) / 2000.0);
+  // Turn it before showing it, so that only its new position is redrawn.
   if (angle != ghostAngle) {
     lv_image_set_rotation(ghostNeedleImg, angle);
     ghostAngle = angle;
   }
+  if (lv_obj_has_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN)) {
+    lv_obj_clear_flag(ghostNeedleImg, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
-void setBoostPressure(double value) {
+// Called on every screen update, not only when a reading arrives: the needle is
+// moved a little each time. readingMs is when the reading arrived (millis).
+void setBoostPressure(double value, uint32_t readingMs) {
   if (needleImg == NULL) return;
 
   // No valid reading (NAN): drop the needle to zero rather than leave it frozen.
   int mbar = isnan(value) ? 0 : (int)(value / PSI_BAR_CONVERSION * 1000);
   if (mbar < 0) mbar = 0;
   if (mbar > 2000) mbar = 2000;
-  updatePeakBoost(mbar);
+
+  // Where to draw the needle on this update.
+  #if NEEDLE_GLIDE
+    float shownMbar = needleGlide.update(mbar, readingMs, millis());
+  #else
+    (void)readingMs;
+    static int jumpedTo = -1;
+    if (jumpedTo < 0 || abs(mbar - jumpedTo) >= GLIDE_DEADBAND_MBAR) jumpedTo = mbar;
+    float shownMbar = jumpedTo;
+  #endif
+
+  int angle = boostAngle(shownMbar);
+  if (angle != needleAngle) {
+    lv_image_set_rotation(needleImg, angle);
+    needleAngle = angle;
+  }
+
+  // The ghost marks the highest point the needle itself reached.
+  updatePeakBoost((int)lroundf(shownMbar));
   updateGhostNeedle();
-  if (boostPressure >= 0 && abs(mbar - boostPressure) < 5) {
-    return;
-  }
-  if (boostPressure != mbar) {
-    int needle_angle = (1350 + (int)((mbar * 2700.0) / 2000.0));
-    lv_image_set_rotation(needleImg, needle_angle);
-    boostPressure = mbar;
-  }
 }
 
 void setOilTemperature(double value) {
@@ -621,7 +657,7 @@ void setIntercoolerTemperature(double value) {
 // lost CAN link). It is passed through so the readout shows "--".
 void updateUI(const SensorData& data) {
   #if ENABLE_BOOST_SENSOR
-    setBoostPressure(data.boostPressure);
+    setBoostPressure(data.boostPressure, data.boostRxMs);
   #endif
 
   if (current_view == 0) {

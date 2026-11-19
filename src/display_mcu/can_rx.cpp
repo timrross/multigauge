@@ -107,6 +107,7 @@ bool processCANMessages(SensorData* data) {
         CanMsgBoost msg;
         if (!unpack(message, &msg)) break;
         data->boostPressure = decodeBoostPsi(&msg);
+        data->boostRxMs = now;
         lastBoostRx = now;
         break;
       }

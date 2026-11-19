@@ -79,6 +79,11 @@ void Task_LVGL(void *pvParameters) {
 // CAN is never started in this build.
 // ============================================================
 
+// The sensor node sends boost about every 110 ms (a 100 ms wait plus the reading
+// itself), so the demo feeds the needle at that rate too. Feeding it faster made
+// the needle look smoother on the bench than it could be in the van.
+#define DEMO_BOOST_PERIOD_MS 110
+
 // Smooth swing from lo to hi and back once every periodMs.
 static double demoWave(uint32_t now, uint32_t periodMs, double lo, double hi) {
   double phase = (now % periodMs) / (double)periodMs;
@@ -86,11 +91,16 @@ static double demoWave(uint32_t now, uint32_t periodMs, double lo, double hi) {
 }
 
 void Task_Demo(void *pvParameters) {
+  uint32_t lastBoostMs = 0;
   while (1) {
     uint32_t now = millis();
     if (xSemaphoreTake(sensor_data_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-      sensorData.boostPressure          = demoWave(now, 12000,   0.0,  29.0);  // psi, the full gauge
-      sensorData.oilPressure            = demoWave(now,  60000,   0.5,   4.5);  // bar, red below 0.8
+      if (now - lastBoostMs >= DEMO_BOOST_PERIOD_MS) {
+        lastBoostMs = now;
+        sensorData.boostPressure        = demoWave(now, 12000,   0.0,  29.0);  // psi, the full gauge
+        sensorData.boostRxMs            = now;
+      }
+      sensorData.oilPressure           = demoWave(now,  60000,   0.5,   4.5);  // bar, red below 0.8
       sensorData.oilTemperature         = demoWave(now, 240000,  70.0, 135.0);  // C, red above 130
       sensorData.egt                    = demoWave(now, 400000, 300.0, 720.0);  // C, red above 700
       sensorData.intercoolerTemperature = demoWave(now, 300000,  15.0,  60.0);  // C

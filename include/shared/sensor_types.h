@@ -27,6 +27,9 @@ struct SensorData {
   double boostPressure;
   double intercoolerTemperature;
   double egt;
+  // When the latest boost reading arrived (millis on the display). The needle
+  // glide uses it to time its movement between readings.
+  uint32_t boostRxMs;
 
   SensorData() :
     atmosPressure(NAN),
@@ -35,7 +38,8 @@ struct SensorData {
     oilPressure(NAN),
     boostPressure(NAN),
     intercoolerTemperature(NAN),
-    egt(NAN)
+    egt(NAN),
+    boostRxMs(0)
   {}
 };
 
